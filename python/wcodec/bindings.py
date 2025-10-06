@@ -142,7 +142,8 @@ class Encoder:
             'original_bytes': rows * cols,
             'compressed_bytes': output_size.value,
             'compression_ratio': compression_ratio.value,
-            'encode_time_ms': encode_time_ms.value
+            'encode_time_ms': encode_time_ms.value,
+            'compression_percent': (1 - output_size.value / (rows * cols)) * 100
         }
         
         return output_bytes, stats
@@ -203,4 +204,3 @@ class Decoder:
         }
         
         return output, stats
-

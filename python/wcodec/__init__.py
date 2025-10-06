@@ -7,10 +7,14 @@ A codec inspired by video compression techniques (AV1/VP9) that achieves
 
 __version__ = "0.1.0"
 
-# Placeholder imports - will be implemented in Week 2+
-# from .encoder import encode_checkpoint
-# from .decoder import decode_checkpoint, load_model
-# from .utils import is_cuda_available, set_decode_params
+# Low-level bindings (Week 2+3)
+try:
+    from .bindings import Encoder, Decoder
+    _bindings_available = True
+except ImportError:
+    _bindings_available = False
+    Encoder = None
+    Decoder = None
 
 # For now, provide stubs for documentation
 def encode_checkpoint(*args, **kwargs):
@@ -96,5 +100,7 @@ __all__ = [
     "load_model",
     "is_cuda_available",
     "set_decode_params",
+    "Encoder",
+    "Decoder",
 ]
 
