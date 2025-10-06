@@ -1,0 +1,23 @@
+# Core dependencies for Weight Codec
+
+# PyTorch (adjust CUDA version as needed)
+torch>=2.0.0
+numpy>=1.21.0
+
+# Model loading/saving
+safetensors>=0.4.0
+
+# Development and testing
+pytest>=7.0.0
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0
+
+# Optional: for accuracy evaluation integration
+# lm-eval>=0.4.0
+# transformers>=4.30.0
+
+# Optional: for visualization/analysis
+# matplotlib>=3.5.0
+# seaborn>=0.12.0
+

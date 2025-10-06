@@ -1,0 +1,30 @@
+﻿# Build artifacts
+build/
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Test outputs
+baselines/*.safetensors
+baselines/*.json
+test_outputs/
+
+# Temp files
+*.log
+*.tmp
+.DS_Store
