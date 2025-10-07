@@ -16,8 +16,8 @@ Achieve **30–60% smaller checkpoint files** with bit-exact reconstruction and 
 
 ## Current Status
 
-**Phase:** Week 4 Complete ✅  
-**Next:** Container format finalization & full integration
+**Phase:** Week 5 Complete (85%) ✅  
+**Next:** GPU integration finalization & optimization
 
 ### Roadmap
 
@@ -25,9 +25,10 @@ Achieve **30–60% smaller checkpoint files** with bit-exact reconstruction and 
 - [x] Week 2: C++ encoder/decoder (predictive + rANS) ✅
 - [x] Week 3: Transform coding (DCT/ADST) + bitplanes ✅
 - [x] Week 4: GPU decode infrastructure (CUDA kernels) ✅
-- [ ] Week 5: Container format + full GPU integration
-- [ ] Week 6: PyTorch integration & optimization
-- [ ] Week 7: Benchmarking & KPI validation
+- [x] Week 5: Container format + high-level APIs ✅
+- [ ] Week 5.5: GPU integration finalization (in progress)
+- [ ] Week 6: Optimization & benchmarking
+- [ ] Week 7: Production-ready polish & documentation
 
 ---
 
@@ -47,6 +48,9 @@ bash scripts/build_cuda.sh
 ### Run Tests
 
 ```bash
+# End-to-end integration tests
+python3 tests/test_end_to_end.py
+
 # Compression roundtrip tests (CPU)
 python3 tests/test_compression_roundtrip.py
 
@@ -55,6 +59,20 @@ python3 tests/test_gpu_decoder.py
 
 # Performance benchmark
 python3 tests/benchmark_decode.py
+```
+
+### Encode/Decode Checkpoints
+
+```bash
+# Encode safetensors to .wcodec (Python API)
+python3 -c "
+from wcodec.encoder_api import encode_checkpoint
+stats = encode_checkpoint('model.safetensors', 'model.wcodec')
+print(f'Compression: {stats[\"compression_ratio\"]:.2f}x')
+"
+
+# Or use CLI tool
+python3 scripts/encode_checkpoint.py model.safetensors model.wcodec --tile-size 16
 ```
 
 ### Run Baseline Measurements

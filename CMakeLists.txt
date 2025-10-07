@@ -50,6 +50,8 @@ set(WCODEC_SOURCES
     cpp/src/transform.cpp
     cpp/src/bitplane.cpp
     cpp/src/container.cpp
+    cpp/src/container_writer.cpp
+    cpp/src/container_reader.cpp
     cpp/src/gpu_decoder.cpp
 )
 

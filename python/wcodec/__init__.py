@@ -16,6 +16,17 @@ except ImportError:
     Encoder = None
     Decoder = None
 
+# High-level APIs (Week 5)
+try:
+    from .encoder_api import encode_checkpoint as _encode_checkpoint
+    from .decoder_api import decode_checkpoint as _decode_checkpoint, load_to_torch
+    _high_level_available = True
+except ImportError:
+    _high_level_available = False
+    _encode_checkpoint = None
+    _decode_checkpoint = None
+    load_to_torch = None
+
 # For now, provide stubs for documentation
 def encode_checkpoint(*args, **kwargs):
     """
@@ -33,9 +44,11 @@ def encode_checkpoint(*args, **kwargs):
         dict: Encoding statistics
     
     Note:
-        Implementation coming in Week 2
+        Week 5: Partial implementation (container format pending)
     """
-    raise NotImplementedError("Encoder will be implemented in Week 2")
+    if _high_level_available and _encode_checkpoint:
+        return _encode_checkpoint(*args, **kwargs)
+    raise NotImplementedError("Encoder implementation in progress (Week 5)")
 
 
 def decode_checkpoint(*args, **kwargs):
@@ -52,9 +65,11 @@ def decode_checkpoint(*args, **kwargs):
         dict or None: State dict if output_path is None, else None
     
     Note:
-        Implementation coming in Week 2
+        Week 5: Partial implementation (container format pending)
     """
-    raise NotImplementedError("Decoder will be implemented in Week 2")
+    if _high_level_available and _decode_checkpoint:
+        return _decode_checkpoint(*args, **kwargs)
+    raise NotImplementedError("Decoder implementation in progress (Week 5)")
 
 
 def load_model(*args, **kwargs):
@@ -98,6 +113,7 @@ __all__ = [
     "encode_checkpoint",
     "decode_checkpoint",
     "load_model",
+    "load_to_torch",
     "is_cuda_available",
     "set_decode_params",
     "Encoder",
