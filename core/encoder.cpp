@@ -47,8 +47,8 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
             // Calculate tile bounds
             uint32_t row_start = ty * tile_size_;
             uint32_t col_start = tx * tile_size_;
-            uint32_t tile_rows = std::min(tile_size_, rows - row_start);
-            uint32_t tile_cols = std::min(tile_size_, cols - col_start);
+            uint32_t tile_rows = std::min(static_cast<uint32_t>(tile_size_), rows - row_start);
+            uint32_t tile_cols = std::min(static_cast<uint32_t>(tile_size_), cols - col_start);
             
             // Extract tile data
             std::vector<int8_t> tile_data(tile_rows * tile_cols);
