@@ -80,6 +80,26 @@ def test_basic():
     # Verify
     match = np.array_equal(tile, reconstructed)
     print(f"Tile reconstruction: {match}")
+    
+    if not match:
+        # Debug output
+        print(f"\nDEBUG:")
+        print(f"Tile sample (first 5x5):")
+        print(tile[:5, :5])
+        print(f"\nDecoded residual sample (first 5x5):")
+        print(decoded[:5, :5])
+        print(f"\nPrediction sample (first 5x5):")
+        print(pred[:5, :5])
+        print(f"\nReconstructed sample (first 5x5):")
+        print(reconstructed[:5, :5])
+        print(f"\nDifference (first 5x5):")
+        print((tile - reconstructed)[:5, :5])
+        print(f"\nMax error: {np.max(np.abs(tile - reconstructed))}")
+        print(f"Mean error: {np.mean(np.abs(tile - reconstructed))}")
+        
+        # Check if it's just overflow
+        print(f"\nTile dtype: {tile.dtype}, range: [{tile.min()}, {tile.max()}]")
+        print(f"Reconstructed dtype: {reconstructed.dtype}, range: [{reconstructed.min()}, {reconstructed.max()}]")
 
     return match
 
