@@ -49,15 +49,21 @@ def test_basic():
     
     prev = 0
     diff_bytes = []
-    for val in residual.flatten():
+    encode_debug = []
+    for i, val in enumerate(residual.flatten()):
         # Convert numpy int8 to Python int to avoid overflow
         val_int = int(val)
         diff = val_int - prev
         # Cast to uint8 range (same as C++: static_cast<uint8_t>(diff + 128))
         byte_val = (diff + 128) % 256
         diff_bytes.append(byte_val)
+        if i < 5:
+            encode_debug.append(f"  [{i}] val={val_int}, prev={prev}, diff={diff}, byte={byte_val}")
         prev = val_int
 
+    print(f"Encoding trace (first 5):")
+    for line in encode_debug:
+        print(line)
     print(f"First 10 encoded bytes: {diff_bytes[:10]}")
     
     # Calculate compression ratio
@@ -70,16 +76,25 @@ def test_basic():
     # Decode
     decoded_vals = []
     prev = 0
-    for diff_byte in diff_bytes:
-        # Decode (same as C++: static_cast<int8_t>(diff_byte - 128))
-        # Convert uint8 to int8 by treating values >= 128 as negative
-        signed_diff = diff_byte - 128
-        if signed_diff >= 128:
-            signed_diff -= 256
+    decode_debug = []
+    for i, diff_byte in enumerate(diff_bytes):
+        # Decode: match C++ static_cast<int8_t>(diff_byte - 128)
+        # First subtract 128 (uncentering), then interpret as signed int8
+        diff_unsigned = diff_byte - 128
+        # Convert to signed int8 range (-128 to 127)
+        if diff_unsigned > 127:
+            signed_diff = diff_unsigned - 256
+        else:
+            signed_diff = diff_unsigned
         val = prev + signed_diff
         decoded_vals.append(val)
+        if i < 5:
+            decode_debug.append(f"  [{i}] byte={diff_byte}, diff_u={diff_unsigned}, diff_s={signed_diff}, prev={prev}, val={val}")
         prev = val
 
+    print(f"Decoding trace (first 5):")
+    for line in decode_debug:
+        print(line)
     print(f"First 10 decoded values: {decoded_vals[:10]}")
     
     decoded = np.array(decoded_vals).reshape(tile.shape)
