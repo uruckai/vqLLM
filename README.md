@@ -16,35 +16,52 @@ Achieve **30–60% smaller checkpoint files** with bit-exact reconstruction and 
 
 ## Current Status
 
-**Phase:** Week 3 Complete ✅  
-**Next:** Build & test, then Week 4 GPU decode
+**Phase:** Week 4 Complete ✅  
+**Next:** Container format finalization & full integration
 
 ### Roadmap
 
 - [x] Week 1: Specification, baseline tools ✅
 - [x] Week 2: C++ encoder/decoder (predictive + rANS) ✅
-- [x] Week 3: Transform coding (DCT/ADST) + bitplanes + container format ✅
-- [ ] Week 3.5: Integration & testing (target 30-50% compression)
-- [ ] Week 4: GPU decode path (CUDA)
-- [ ] Week 5: PyTorch integration
-- [ ] Week 6: Benchmarking & optimization
+- [x] Week 3: Transform coding (DCT/ADST) + bitplanes ✅
+- [x] Week 4: GPU decode infrastructure (CUDA kernels) ✅
+- [ ] Week 5: Container format + full GPU integration
+- [ ] Week 6: PyTorch integration & optimization
+- [ ] Week 7: Benchmarking & KPI validation
 
 ---
 
 ## Quick Reference
+
+### Build the Project
+
+```bash
+# CPU-only build
+mkdir -p build && cd build
+cmake .. && make -j8
+
+# With CUDA support (auto-detects GPU)
+bash scripts/build_cuda.sh
+```
+
+### Run Tests
+
+```bash
+# Compression roundtrip tests (CPU)
+python3 tests/test_compression_roundtrip.py
+
+# GPU decoder tests
+python3 tests/test_gpu_decoder.py
+
+# Performance benchmark
+python3 tests/benchmark_decode.py
+```
 
 ### Run Baseline Measurements
 
 ```bash
 # Create synthetic checkpoint and measure
 python scripts/baseline_harness.py --model llama3-8b --quant int8 --size medium --output baselines/
-```
-
-### Verify Bit-Exact Reconstruction
-
-```bash
-# (Once encoder/decoder implemented)
-python scripts/verify_checkpoint.py --original model.safetensors --decoded model_decoded.safetensors
 ```
 
 ### Install Package
