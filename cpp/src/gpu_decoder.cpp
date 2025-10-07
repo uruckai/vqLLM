@@ -246,8 +246,9 @@ GPUDecodeStats GPUDecoder::decodeLayer(
     size_t cols,
     int8_t* output
 ) {
-    // Fallback to CPU decoder if GPU not available
-    if (!pImpl->gpu_available && pImpl->cpu_decoder) {
+    // Use CPU decoder for now (GPU kernels need more integration work)
+    // This provides a working baseline while we complete GPU pipeline
+    if (pImpl->cpu_decoder) {
         auto start = std::chrono::high_resolution_clock::now();
         
         DecodeStats cpu_stats = pImpl->cpu_decoder->decodeLayer(

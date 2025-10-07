@@ -7,14 +7,16 @@ A codec inspired by video compression techniques (AV1/VP9) that achieves
 
 __version__ = "0.1.0"
 
-# Low-level bindings (Week 2+3)
+# Low-level bindings (Week 2+3+6)
 try:
-    from .bindings import Encoder, Decoder
+    from .bindings import Encoder, Decoder, GPUDecoder, is_gpu_available
     _bindings_available = True
 except ImportError:
     _bindings_available = False
     Encoder = None
     Decoder = None
+    GPUDecoder = None
+    is_gpu_available = lambda: False
 
 # High-level APIs (Week 5)
 try:
@@ -115,8 +117,10 @@ __all__ = [
     "load_model",
     "load_to_torch",
     "is_cuda_available",
+    "is_gpu_available",
     "set_decode_params",
     "Encoder",
     "Decoder",
+    "GPUDecoder",
 ]
 

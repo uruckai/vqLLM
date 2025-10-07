@@ -14,28 +14,6 @@
 namespace wcodec {
 
 /**
- * Layer metadata in container
- */
-struct LayerInfo {
-    std::string name;
-    size_t rows;
-    size_t cols;
-    uint64_t offset;           // Offset in file
-    uint64_t compressed_size;
-    uint64_t uncompressed_size;
-    uint32_t crc32;
-    
-    // Encoding parameters
-    size_t tile_rows;
-    size_t tile_cols;
-    std::vector<uint8_t> predictor_modes;  // Per tile
-    std::vector<uint8_t> transform_types;  // Per tile
-    std::vector<std::vector<uint32_t>> frequency_tables;  // Per tile
-    std::vector<uint32_t> tile_offsets;    // Offset within layer data
-    std::vector<uint32_t> tile_sizes;      // Size of each tile
-};
-
-/**
  * Container metadata
  */
 struct ContainerMetadata {

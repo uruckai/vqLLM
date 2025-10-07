@@ -76,6 +76,31 @@ _lib.wcodec_decode_layer.restype = ctypes.c_int
 _lib.wcodec_free_buffer.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
 _lib.wcodec_free_buffer.restype = None
 
+# GPU decoder functions
+class _GPUDecoder(ctypes.Structure):
+    pass
+
+_lib.wcodec_gpu_decoder_create.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
+_lib.wcodec_gpu_decoder_create.restype = ctypes.POINTER(_GPUDecoder)
+
+_lib.wcodec_gpu_decoder_destroy.argtypes = [ctypes.POINTER(_GPUDecoder)]
+_lib.wcodec_gpu_decoder_destroy.restype = None
+
+_lib.wcodec_gpu_decode_layer.argtypes = [
+    ctypes.POINTER(_GPUDecoder),
+    ctypes.POINTER(ctypes.c_uint8),
+    ctypes.c_size_t,
+    ctypes.c_size_t,
+    ctypes.c_size_t,
+    ctypes.POINTER(ctypes.c_int8),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_int)
+]
+_lib.wcodec_gpu_decode_layer.restype = ctypes.c_int
+
+_lib.wcodec_gpu_is_available.argtypes = []
+_lib.wcodec_gpu_is_available.restype = ctypes.c_int
+
 
 class Encoder:
     """Encoder wrapper"""
@@ -204,3 +229,72 @@ class Decoder:
         }
         
         return output, stats
+
+
+class GPUDecoder:
+    """GPU-accelerated decoder wrapper"""
+    
+    def __init__(self, tile_size: int = 16):
+        self._handle = _lib.wcodec_gpu_decoder_create(tile_size, tile_size)
+        if not self._handle:
+            raise RuntimeError("Failed to create GPU decoder")
+    
+    def __del__(self):
+        if hasattr(self, '_handle') and self._handle:
+            _lib.wcodec_gpu_decoder_destroy(self._handle)
+    
+    def decode_layer(self, data: bytes, rows: int, cols: int) -> Tuple[np.ndarray, dict]:
+        """
+        Decode a layer (GPU-accelerated if available, otherwise CPU)
+        
+        Args:
+            data: Encoded bytes
+            rows: Expected number of rows
+            cols: Expected number of columns
+        
+        Returns:
+            tuple: (decoded_array, stats_dict)
+        """
+        # Prepare output array
+        output = np.zeros((rows, cols), dtype=np.int8)
+        
+        # Prepare input
+        input_size = len(data)
+        input_ptr = (ctypes.c_uint8 * input_size).from_buffer_copy(data)
+        
+        # Decode
+        decode_time_ms = ctypes.c_double()
+        used_gpu = ctypes.c_int()
+        output_ptr = output.ctypes.data_as(ctypes.POINTER(ctypes.c_int8))
+        
+        result = _lib.wcodec_gpu_decode_layer(
+            self._handle,
+            input_ptr,
+            input_size,
+            rows,
+            cols,
+            output_ptr,
+            ctypes.byref(decode_time_ms),
+            ctypes.byref(used_gpu)
+        )
+        
+        if result != 0:
+            raise RuntimeError("GPU decoding failed")
+        
+        stats = {
+            'compressed_bytes': input_size,
+            'decompressed_bytes': rows * cols,
+            'decode_time_ms': decode_time_ms.value,
+            'used_gpu': bool(used_gpu.value),
+            'device': 'GPU' if used_gpu.value else 'CPU (fallback)'
+        }
+        
+        return output, stats
+
+
+def is_gpu_available() -> bool:
+    """Check if GPU decode is available"""
+    try:
+        return bool(_lib.wcodec_gpu_is_available())
+    except:
+        return False

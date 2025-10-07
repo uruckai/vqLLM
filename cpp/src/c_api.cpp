@@ -5,6 +5,7 @@
 
 #include "wcodec/encoder.h"
 #include "wcodec/decoder.h"
+#include "wcodec/gpu_decoder.h"
 #include <cstring>
 #include <vector>
 
@@ -128,6 +129,69 @@ int wcodec_decode_layer(
 // Free buffer allocated by encode
 void wcodec_free_buffer(uint8_t* buffer) {
     delete[] buffer;
+}
+
+// GPU decoder functions
+struct WCodecGPUDecoder {
+    wcodec::GPUDecoder* decoder;
+};
+
+WCodecGPUDecoder* wcodec_gpu_decoder_create(size_t tile_rows, size_t tile_cols) {
+    try {
+        wcodec::GPUDecoderConfig config;
+        config.device_id = 0;
+        config.fallback_to_cpu = true;
+        
+        WCodecGPUDecoder* handle = new WCodecGPUDecoder();
+        handle->decoder = new wcodec::GPUDecoder(config);
+        return handle;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void wcodec_gpu_decoder_destroy(WCodecGPUDecoder* decoder) {
+    if (decoder) {
+        delete decoder->decoder;
+        delete decoder;
+    }
+}
+
+int wcodec_gpu_decode_layer(
+    WCodecGPUDecoder* decoder,
+    const uint8_t* input,
+    size_t input_size,
+    size_t rows,
+    size_t cols,
+    int8_t* output,
+    double* decode_time_ms,
+    int* used_gpu
+) {
+    if (!decoder || !input || !output) {
+        return -1;
+    }
+    
+    try {
+        wcodec::GPUDecodeStats stats = decoder->decoder->decodeLayer(
+            input, input_size, rows, cols, output
+        );
+        
+        if (decode_time_ms) {
+            *decode_time_ms = stats.total_time_ms;
+        }
+        
+        if (used_gpu) {
+            *used_gpu = decoder->decoder->isGPUAvailable() ? 1 : 0;
+        }
+        
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+int wcodec_gpu_is_available() {
+    return wcodec::isCUDAAvailable() ? 1 : 0;
 }
 
 } // extern "C"

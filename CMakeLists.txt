@@ -43,6 +43,7 @@ include_directories(${CMAKE_SOURCE_DIR}/cpp/include)
 # CPU source files
 set(WCODEC_SOURCES
     cpp/src/encoder.cpp
+    cpp/src/encoder_gpu.cpp
     cpp/src/decoder.cpp
     cpp/src/predictor.cpp
     cpp/src/rans.cpp
@@ -53,14 +54,16 @@ set(WCODEC_SOURCES
     cpp/src/container_writer.cpp
     cpp/src/container_reader.cpp
     cpp/src/gpu_decoder.cpp
+    cpp/src/gpu_decoder_full.cpp
 )
 
-# CUDA sources (Week 4)
+# CUDA sources (Week 4+6)
 if(CUDA_AVAILABLE)
     set(WCODEC_CUDA_SOURCES
         cuda/rans_decode.cu
         cuda/predictor_reconstruct.cu
         cuda/transform.cu
+        cuda/rans_decode_full.cu
     )
     set_source_files_properties(${WCODEC_CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)
 endif()

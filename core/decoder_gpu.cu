@@ -10,52 +10,28 @@
 namespace codec {
 
 /**
- * rANS decode on GPU (per-tile)
+ * Simple differential decode on GPU (per-tile)
  */
 __device__ void ransDecodeDevice(
     const uint8_t* stream, size_t stream_size,
     const uint32_t* freqs, int8_t* output, size_t output_size)
 {
-    // Build cumulative frequency table
-    uint32_t cumul[257];
-    cumul[0] = 0;
-    for (int i = 0; i < 256; i++) {
-        cumul[i + 1] = cumul[i] + freqs[i];
-    }
-    
-    // Initialize state
-    uint64_t state = 0;
-    int stream_pos = 0;
-    
-    // Read initial state
-    for (int i = 0; i < 4 && stream_pos < stream_size; i++) {
-        state = (state << 8) | stream[stream_pos++];
-    }
-    
-    // Decode symbols forward
-    for (size_t i = 0; i < output_size; i++) {
-        // Find symbol
-        uint32_t freq_val = state % FREQ_SCALE;
-        
-        uint8_t symbol = 0;
-        for (int s = 0; s < 256; s++) {
-            if (freq_val >= cumul[s] && freq_val < cumul[s + 1]) {
-                symbol = s;
-                break;
-            }
-        }
-        
-        output[i] = static_cast<int8_t>(symbol);
-        
-        // Update state
-        uint32_t freq = freqs[symbol];
-        uint32_t start = cumul[symbol];
-        state = freq * (state / FREQ_SCALE) + (state % FREQ_SCALE) - start;
-        
-        // Renormalize
-        while (state < (1u << 24) && stream_pos < stream_size) {
-            state = (state << 8) | stream[stream_pos++];
-        }
+    // Read size header (4 bytes)
+    if (stream_size < 4) return;
+
+    uint32_t data_size = (stream[0] << 0) | (stream[1] << 8) |
+                        (stream[2] << 16) | (stream[3] << 24);
+
+    // Read differential data
+    size_t read_size = min(data_size, static_cast<uint32_t>(output_size));
+    int8_t prev = 0;
+
+    for (size_t i = 0; i < read_size && (i + 4) < stream_size; i++) {
+        uint8_t diff_byte = stream[i + 4];
+        int8_t diff = static_cast<int8_t>(diff_byte - 128);  // Uncenter
+        int8_t current = prev + diff;
+        output[i] = current;
+        prev = current;
     }
 }
 

@@ -9,7 +9,7 @@ find_package(CUDAToolkit REQUIRED)
 
 # Source files
 set(SOURCES
-    encoder.cpp
+    encoder_simple.cpp
     decoder_host.cpp
     c_api.cpp
 )

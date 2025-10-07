@@ -47,9 +47,22 @@ struct LayerInfo {
     std::string name;
     size_t rows;
     size_t cols;
-    DType dtype;
-    size_t num_tiles_row;
-    size_t num_tiles_col;
+    DType dtype = DType::INT8;
+    size_t num_tiles_row = 0;
+    size_t num_tiles_col = 0;
+    
+    // Container format fields
+    uint64_t offset = 0;
+    uint64_t compressed_size = 0;
+    uint64_t uncompressed_size = 0;
+    uint32_t crc32 = 0;
+    size_t tile_rows = 16;
+    size_t tile_cols = 16;
+    std::vector<uint8_t> predictor_modes;
+    std::vector<uint8_t> transform_types;
+    std::vector<std::vector<uint32_t>> frequency_tables;
+    std::vector<uint32_t> tile_offsets;
+    std::vector<uint32_t> tile_sizes;
 };
 
 // Tile metadata
