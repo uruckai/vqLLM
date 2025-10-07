@@ -53,10 +53,9 @@ def test_basic():
         # Convert numpy int8 to Python int to avoid overflow
         val_int = int(val)
         diff = val_int - prev
-        # Center around 128, but clamp to uint8 range (0-255)
-        centered = diff + 128
-        clamped = max(0, min(255, centered))
-        diff_bytes.append(clamped)
+        # Cast to uint8 range (same as C++: static_cast<uint8_t>(diff + 128))
+        byte_val = (diff + 128) % 256
+        diff_bytes.append(byte_val)
         prev = val_int
 
     print(f"First 10 encoded bytes: {diff_bytes[:10]}")
@@ -72,8 +71,12 @@ def test_basic():
     decoded_vals = []
     prev = 0
     for diff_byte in diff_bytes:
-        diff = diff_byte - 128
-        val = prev + diff
+        # Decode (same as C++: static_cast<int8_t>(diff_byte - 128))
+        # Convert uint8 to int8 by treating values >= 128 as negative
+        signed_diff = diff_byte - 128
+        if signed_diff >= 128:
+            signed_diff -= 256
+        val = prev + signed_diff
         decoded_vals.append(val)
         prev = val
 
