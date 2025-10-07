@@ -43,6 +43,10 @@ def test_basic():
 
     # Differential encoding
     residual = residual_left if best_mode == "LEFT" else residual_top
+    
+    print(f"\nResidual sample (first 5x5):")
+    print(residual[:5, :5])
+    
     prev = 0
     diff_bytes = []
     for val in residual.flatten():
@@ -55,6 +59,8 @@ def test_basic():
         diff_bytes.append(clamped)
         prev = val_int
 
+    print(f"First 10 encoded bytes: {diff_bytes[:10]}")
+    
     # Calculate compression ratio
     original_bytes = tile.nbytes
     compressed_bytes = 4 + len(diff_bytes)  # header + data
@@ -71,6 +77,8 @@ def test_basic():
         decoded_vals.append(val)
         prev = val
 
+    print(f"First 10 decoded values: {decoded_vals[:10]}")
+    
     decoded = np.array(decoded_vals).reshape(tile.shape)
 
     # Reconstruct
