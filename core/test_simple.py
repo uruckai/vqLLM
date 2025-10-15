@@ -179,6 +179,7 @@ def test_library():
 
         print(f"✓ Encoded successfully, compression ratio: {ratio:.2f}x")
         print(f"✓ Output size: {output_size.value} bytes")
+        print(f"  Input size: {test_data.nbytes} bytes")
 
         # Check if GPU decoder is available
         gpu_available = lib.decoder_is_available()
@@ -204,6 +205,12 @@ def test_library():
             # Verify bit-exact reconstruction
             matches = np.array_equal(test_data, decoded_data)
             print(f"✓ Bit-exact reconstruction: {matches}")
+            
+            if not matches:
+                print(f"  Max error: {np.max(np.abs(test_data - decoded_data))}")
+                print(f"  Mean error: {np.mean(np.abs(test_data - decoded_data))}")
+                print(f"  Original sample (first 2x2):\n{test_data[:2, :2]}")
+                print(f"  Decoded sample (first 2x2):\n{decoded_data[:2, :2]}")
 
             # Cleanup
             lib.decoder_destroy(decoder)
