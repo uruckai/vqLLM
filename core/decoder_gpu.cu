@@ -147,6 +147,12 @@ __global__ void decodeKernel(
     // Thread 0 does rANS decode
     if (threadIdx.x == 0) {
         const TileMetadata& meta = tile_metadata[tile_idx];
+        
+        if (tile_idx == 0) {
+            printf("Tile 0 metadata: data_offset=%u, data_size=%u, predictor=%d\n",
+                   meta.data_offset, meta.data_size, meta.predictor_mode);
+        }
+        
         const uint8_t* tile_stream = compressed + meta.data_offset;
         
         ransDecodeDevice(tile_stream, meta.data_size, meta.freq_table, 
