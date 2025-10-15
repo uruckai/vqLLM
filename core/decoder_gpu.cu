@@ -28,7 +28,17 @@ __device__ void ransDecodeDevice(
 
     for (size_t i = 0; i < read_size && (i + 4) < stream_size; i++) {
         uint8_t diff_byte = stream[i + 4];
-        int8_t diff = static_cast<int8_t>(diff_byte - 128);  // Uncenter
+        // Convert from uint8 centered at 128 to signed int8
+        // This matches the encoder: static_cast<uint8_t>(diff + 128)
+        int diff_unsigned = static_cast<int>(diff_byte) - 128;
+        int8_t diff;
+        if (diff_unsigned >= 128) {
+            diff = diff_unsigned - 256;
+        } else if (diff_unsigned < -128) {
+            diff = diff_unsigned + 256;
+        } else {
+            diff = diff_unsigned;
+        }
         int8_t current = prev + diff;
         output[i] = current;
         prev = current;
