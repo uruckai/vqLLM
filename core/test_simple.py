@@ -88,8 +88,10 @@ def test_basic():
         # Decode: match C++ static_cast<int8_t>(diff_byte - 128)
         diff_unsigned = diff_byte - 128
         # Convert to signed int8 range (-128 to 127)
-        if diff_unsigned > 127:
+        if diff_unsigned >= 128:
             signed_diff = diff_unsigned - 256
+        elif diff_unsigned < -128:
+            signed_diff = diff_unsigned + 256
         else:
             signed_diff = diff_unsigned
         val = prev + signed_diff
@@ -273,8 +275,10 @@ def test_llm_data():
     prev = 0
     for diff_byte in diff_bytes:
         diff_unsigned = diff_byte - 128
-        if diff_unsigned > 127:
+        if diff_unsigned >= 128:
             signed_diff = diff_unsigned - 256
+        elif diff_unsigned < -128:
+            signed_diff = diff_unsigned + 256
         else:
             signed_diff = diff_unsigned
         val = prev + signed_diff
