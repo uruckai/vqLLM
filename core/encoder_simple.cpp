@@ -89,9 +89,9 @@ void Encoder::encodeTile(const int8_t* tile, uint32_t tile_rows, uint32_t tile_c
     predict(tile, residual.data(), tile_rows, tile_cols, left, top,
            static_cast<PredictorMode>(metadata.predictor_mode));
 
-    // Simple differential encoding (proven to work)
+    // Simple differential encoding (use int32 to avoid overflow)
     std::vector<uint8_t> encoded;
-    int8_t prev = 0;
+    int32_t prev = 0;
 
     // Write size header (4 bytes)
     uint32_t data_size = static_cast<uint32_t>(tile_size);
@@ -102,9 +102,9 @@ void Encoder::encodeTile(const int8_t* tile, uint32_t tile_rows, uint32_t tile_c
 
     // Write differential data
     for (size_t i = 0; i < tile_size; i++) {
-        int8_t current = residual[i];
-        int8_t diff = current - prev;
-        encoded.push_back(static_cast<uint8_t>(diff + 128));  // Center around 128
+        int32_t current = static_cast<int32_t>(residual[i]);
+        int32_t diff = current - prev;
+        encoded.push_back(static_cast<uint8_t>((diff + 128) & 0xFF));  // Center and clamp
         prev = current;
     }
 
@@ -191,8 +191,8 @@ void Encoder::normalizeFrequencies(uint32_t* freqs, size_t num_symbols, uint32_t
 
 void Encoder::ransEncode(const int8_t* data, size_t size, const uint32_t* freqs,
                         std::vector<uint8_t>& output) {
-    // Simplified differential encoding (definitely works)
-    int8_t prev = 0;
+    // Simplified differential encoding (use int32 to avoid overflow)
+    int32_t prev = 0;
 
     // Write size header
     uint32_t data_size = static_cast<uint32_t>(size);
@@ -203,9 +203,9 @@ void Encoder::ransEncode(const int8_t* data, size_t size, const uint32_t* freqs,
 
     // Write differential data
     for (size_t i = 0; i < size; i++) {
-        int8_t current = data[i];
-        int8_t diff = current - prev;
-        output.push_back(static_cast<uint8_t>(diff + 128));
+        int32_t current = static_cast<int32_t>(data[i]);
+        int32_t diff = current - prev;
+        output.push_back(static_cast<uint8_t>((diff + 128) & 0xFF));
         prev = current;
     }
 }

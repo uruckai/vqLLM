@@ -24,23 +24,18 @@ __device__ void ransDecodeDevice(
 
     // Read differential data
     size_t read_size = min(data_size, static_cast<uint32_t>(output_size));
-    int8_t prev = 0;
+    int32_t prev = 0;  // Use int32 to avoid overflow
 
     for (size_t i = 0; i < read_size && (i + 4) < stream_size; i++) {
         uint8_t diff_byte = stream[i + 4];
-        // Convert from uint8 centered at 128 to signed int8
-        // This matches the encoder: static_cast<uint8_t>(diff + 128)
-        int diff_unsigned = static_cast<int>(diff_byte) - 128;
-        int8_t diff;
-        if (diff_unsigned >= 128) {
-            diff = diff_unsigned - 256;
-        } else if (diff_unsigned < -128) {
-            diff = diff_unsigned + 256;
-        } else {
-            diff = diff_unsigned;
-        }
-        int8_t current = prev + diff;
-        output[i] = current;
+        // Convert from uint8 centered at 128 to signed diff
+        // Encoder does: (diff + 128) & 0xFF, which wraps negative diffs
+        // To decode: treat (diff_byte - 128) as an 8-bit signed value
+        int32_t diff_temp = static_cast<int32_t>(diff_byte) - 128;
+        // Convert to proper signed value: if > 127, it's actually negative
+        int32_t diff = (diff_temp > 127) ? (diff_temp - 256) : diff_temp;
+        int32_t current = prev + diff;
+        output[i] = static_cast<int8_t>(current);
         prev = current;
     }
 }
