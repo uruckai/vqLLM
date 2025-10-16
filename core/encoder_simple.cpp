@@ -34,10 +34,12 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
                  reinterpret_cast<uint8_t*>(&header),
                  reinterpret_cast<uint8_t*>(&header) + sizeof(Header));
 
-    // Reserve space for tile metadata
+    // Create temporary metadata storage
+    std::vector<TileMetadata> tile_metadata(num_tiles);
+    
+    // Reserve space for tile metadata in output (will fill later)
     size_t metadata_offset = output.size();
     output.resize(metadata_offset + num_tiles * sizeof(TileMetadata));
-    auto* tile_metadata = reinterpret_cast<TileMetadata*>(output.data() + metadata_offset);
 
     // Encode each tile
     for (uint32_t ty = 0; ty < num_tiles_row; ty++) {
@@ -69,6 +71,9 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
             tile_metadata[tile_idx].data_size = output.size() - tile_metadata[tile_idx].data_offset;
         }
     }
+    
+    // Copy metadata into output buffer
+    memcpy(output.data() + metadata_offset, tile_metadata.data(), num_tiles * sizeof(TileMetadata));
 
     // Calculate compression ratio
     size_t original_size = rows * cols;
