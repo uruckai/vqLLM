@@ -18,32 +18,19 @@ struct RANSSymbol {
 };
 
 /**
- * rANS decode on GPU
+ * rANS decode on GPU (using shared frequency table)
  */
 __device__ void ransDecodeDevice(
     const uint8_t* stream, size_t stream_size,
-    const uint32_t* freqs, int8_t* output, size_t output_size)
+    const RANSSymbol* symbols, int8_t* output, size_t output_size)
 {
-    // Minimum size: 4 (size header) + 512 (freq table) + 4 (rANS state)
-    if (stream_size < 520) return;
+    // Stream format: 4 bytes (size header) + encoded data + 4 bytes (rANS state at end)
+    if (stream_size < 8) return;
 
     // Read output size
     uint32_t stored_size = (stream[0] << 0) | (stream[1] << 8) |
                           (stream[2] << 16) | (stream[3] << 24);
     if (stored_size != output_size) return;
-
-    // Read frequency table
-    RANSSymbol symbols[256];
-    uint32_t cumul = 0;
-    const uint8_t* freq_ptr = stream + 4;
-    
-    for (int i = 0; i < 256; i++) {
-        uint16_t freq = (freq_ptr[0] << 0) | (freq_ptr[1] << 8);
-        symbols[i].start = cumul;
-        symbols[i].freq = freq;
-        cumul += freq;
-        freq_ptr += 2;
-    }
 
     // Initialize rANS state from end of stream
     const uint8_t* state_ptr = stream + stream_size - 4;
@@ -57,7 +44,7 @@ __device__ void ransDecodeDevice(
     size_t decode_count = min(output_size, static_cast<size_t>(256));
     
     for (size_t i = 0; i < decode_count; i++) {
-        // Find symbol
+        // Find symbol using global frequency table
         uint32_t cum_freq = state & 0xFFF;  // 12-bit mask
         
         uint8_t symbol = 0;
@@ -76,7 +63,7 @@ __device__ void ransDecodeDevice(
         
         // Renormalize
         while (state < (1u << 23)) {
-            if (read_ptr >= stream + 516) {  // Don't read past freq table
+            if (read_ptr >= stream + 4) {  // Don't read past size header
                 state = (state << 8) | (*read_ptr);
                 read_ptr--;
             } else {
@@ -151,7 +138,8 @@ __global__ void decodeKernel(
     const uint8_t* compressed,
     const Header* header,
     const TileMetadata* tile_metadata,
-    int8_t* output)
+    int8_t* output,
+    const uint8_t* global_freq_table)  // Add global freq table parameter
 {
     // Each block handles one tile
     uint32_t tile_idx = blockIdx.x;
@@ -168,15 +156,30 @@ __global__ void decodeKernel(
     uint32_t tile_rows = min(header->tile_size, header->output_rows - row_start);
     uint32_t tile_cols = min(header->tile_size, header->output_cols - col_start);
     
-    // Shared memory for tile
-    extern __shared__ int8_t tile_data[];
+    // Shared memory for tile and frequency table
+    extern __shared__ int8_t shared_mem[];
+    int8_t* tile_data = shared_mem;
+    RANSSymbol* symbols = reinterpret_cast<RANSSymbol*>(shared_mem + 256);
+    
+    // Thread 0 loads global frequency table into shared memory
+    if (threadIdx.x == 0) {
+        uint32_t cumul = 0;
+        for (int i = 0; i < 256; i++) {
+            uint16_t freq = (global_freq_table[i*2 + 0] << 0) | 
+                           (global_freq_table[i*2 + 1] << 8);
+            symbols[i].start = cumul;
+            symbols[i].freq = freq;
+            cumul += freq;
+        }
+    }
+    __syncthreads();
     
     // Thread 0 does rANS decode
     if (threadIdx.x == 0) {
         const TileMetadata& meta = tile_metadata[tile_idx];
         const uint8_t* tile_stream = compressed + meta.data_offset;
         
-        ransDecodeDevice(tile_stream, meta.data_size, meta.freq_table, 
+        ransDecodeDevice(tile_stream, meta.data_size, symbols, 
                         tile_data, tile_rows * tile_cols);
     }
     __syncthreads();
@@ -219,11 +222,18 @@ extern "C" void launchDecodeKernel(
     cudaMemcpy(&h_header, d_header, sizeof(codec::Header), cudaMemcpyDeviceToHost);
     
     uint32_t num_tiles = h_header.num_tiles_row * h_header.num_tiles_col;
-    size_t shared_mem = h_header.tile_size * h_header.tile_size * sizeof(int8_t);
+    size_t metadata_size = num_tiles * sizeof(codec::TileMetadata);
+    
+    // Global frequency table is after header + metadata
+    const uint8_t* d_global_freq_table = d_compressed + sizeof(codec::Header) + metadata_size;
+    
+    // Shared memory: tile data + frequency table symbols
+    size_t shared_mem = h_header.tile_size * h_header.tile_size * sizeof(int8_t) + 
+                       256 * sizeof(codec::RANSSymbol);
     
     // Launch one block per tile, 256 threads per block
     codec::decodeKernel<<<num_tiles, 256, shared_mem, stream>>>(
-        d_compressed, d_header, d_metadata, d_output
+        d_compressed, d_header, d_metadata, d_output, d_global_freq_table
     );
     
     cudaError_t err = cudaGetLastError();

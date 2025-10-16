@@ -42,7 +42,10 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     size_t metadata_offset = output.size();
     output.resize(metadata_offset + num_tiles * sizeof(TileMetadata));
 
-    // Encode each tile
+    // PASS 1: Collect all differential data to build global frequency table
+    std::vector<std::vector<uint8_t>> all_tile_diffs(num_tiles);
+    std::vector<uint8_t> all_diffs_combined;
+    
     for (uint32_t ty = 0; ty < num_tiles_row; ty++) {
         for (uint32_t tx = 0; tx < num_tiles_col; tx++) {
             uint32_t tile_idx = ty * num_tiles_col + tx;
@@ -52,25 +55,70 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
             uint32_t col_start = tx * tile_size_;
             uint32_t tile_rows = std::min(static_cast<uint32_t>(tile_size_), rows - row_start);
             uint32_t tile_cols = std::min(static_cast<uint32_t>(tile_size_), cols - col_start);
+            size_t tile_size = tile_rows * tile_cols;
 
             // Extract tile data
-            std::vector<int8_t> tile_data(tile_rows * tile_cols);
+            std::vector<int8_t> tile_data(tile_size);
             for (uint32_t r = 0; r < tile_rows; r++) {
                 memcpy(tile_data.data() + r * tile_cols,
                       data + (row_start + r) * cols + col_start,
                       tile_cols);
             }
 
-            // Get context (left and top tiles)
+            // Get context
             const int8_t* left = (tx > 0) ? data + row_start * cols + col_start - 1 : nullptr;
             const int8_t* top = (ty > 0) ? data + (row_start - 1) * cols + col_start : nullptr;
 
-            // Encode tile
-            tile_metadata[tile_idx].data_offset = output.size();
-            encodeTile(tile_data.data(), tile_rows, tile_cols, left, top,
-                      output, tile_metadata[tile_idx]);
-            tile_metadata[tile_idx].data_size = output.size() - tile_metadata[tile_idx].data_offset;
+            // Select predictor and compute residual
+            tile_metadata[tile_idx].predictor_mode = selectPredictor(tile_data.data(), tile_rows, tile_cols, left, top);
+            
+            std::vector<int8_t> residual(tile_size);
+            predict(tile_data.data(), residual.data(), tile_rows, tile_cols, left, top,
+                   static_cast<PredictorMode>(tile_metadata[tile_idx].predictor_mode));
+
+            // Differential encoding
+            std::vector<uint8_t> diff_data(tile_size);
+            int32_t prev = 0;
+            for (size_t i = 0; i < tile_size; i++) {
+                int32_t current = static_cast<int32_t>(residual[i]);
+                int32_t diff = current - prev;
+                diff_data[i] = static_cast<uint8_t>((diff + 128) & 0xFF);
+                prev = current;
+            }
+            
+            all_tile_diffs[tile_idx] = diff_data;
+            all_diffs_combined.insert(all_diffs_combined.end(), diff_data.begin(), diff_data.end());
         }
+    }
+    
+    // Build ONE global frequency table
+    RANSEncoder global_rans;
+    global_rans.buildFrequencies(all_diffs_combined.data(), all_diffs_combined.size());
+    
+    // Write global frequency table (512 bytes) once
+    const auto* symbols = global_rans.getSymbolTable();
+    for (int i = 0; i < 256; i++) {
+        output.push_back((symbols[i].freq >> 0) & 0xFF);
+        output.push_back((symbols[i].freq >> 8) & 0xFF);
+    }
+    
+    // PASS 2: Encode each tile using the shared frequency table
+    for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
+        tile_metadata[tile_idx].data_offset = output.size();
+        
+        // Encode this tile's differential data
+        RANSEncoder tile_rans;
+        // Copy global frequencies
+        tile_rans.buildFrequencies(all_diffs_combined.data(), all_diffs_combined.size());
+        std::vector<uint8_t> compressed = tile_rans.encode(all_tile_diffs[tile_idx].data(), 
+                                                           all_tile_diffs[tile_idx].size());
+        
+        // Only write the encoded data (size + state + data), not the freq table
+        // Skip the freq table (bytes 4-515) from the compressed output
+        output.insert(output.end(), compressed.begin(), compressed.begin() + 4);  // Size header
+        output.insert(output.end(), compressed.begin() + 516, compressed.end());   // State + data
+        
+        tile_metadata[tile_idx].data_size = output.size() - tile_metadata[tile_idx].data_offset;
     }
     
     // Copy metadata into output buffer
@@ -82,38 +130,6 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     return ratio;
 }
 
-void Encoder::encodeTile(const int8_t* tile, uint32_t tile_rows, uint32_t tile_cols,
-                        const int8_t* left, const int8_t* top,
-                        std::vector<uint8_t>& output, TileMetadata& metadata) {
-    size_t tile_size = tile_rows * tile_cols;
-
-    // Select best predictor
-    metadata.predictor_mode = selectPredictor(tile, tile_rows, tile_cols, left, top);
-
-    // Compute residual
-    std::vector<int8_t> residual(tile_size);
-    predict(tile, residual.data(), tile_rows, tile_cols, left, top,
-           static_cast<PredictorMode>(metadata.predictor_mode));
-
-    // Differential encoding (use int32 to avoid overflow)
-    std::vector<uint8_t> diff_data(tile_size);
-    int32_t prev = 0;
-
-    for (size_t i = 0; i < tile_size; i++) {
-        int32_t current = static_cast<int32_t>(residual[i]);
-        int32_t diff = current - prev;
-        diff_data[i] = static_cast<uint8_t>((diff + 128) & 0xFF);  // Center and clamp
-        prev = current;
-    }
-
-    // Compress with rANS
-    RANSEncoder rans;
-    rans.buildFrequencies(diff_data.data(), diff_data.size());
-    std::vector<uint8_t> compressed = rans.encode(diff_data.data(), diff_data.size());
-
-    // Copy to output
-    output.insert(output.end(), compressed.begin(), compressed.end());
-}
 
 PredictorMode Encoder::selectPredictor(const int8_t* tile, uint32_t rows, uint32_t cols,
                                        const int8_t* left, const int8_t* top) {
