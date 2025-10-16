@@ -132,6 +132,31 @@ std::vector<uint8_t> RANSEncoder::encode(const uint8_t* data, size_t size) {
     return output;
 }
 
+std::vector<uint8_t> RANSEncoder::encodeWithoutFreqTable(const uint8_t* data, size_t size) {
+    std::vector<uint8_t> output;
+    
+    // Write size header (4 bytes)
+    output.push_back((size >> 0) & 0xFF);
+    output.push_back((size >> 8) & 0xFF);
+    output.push_back((size >> 16) & 0xFF);
+    output.push_back((size >> 24) & 0xFF);
+    
+    // NO frequency table written here - it's stored globally
+    
+    // Reset state
+    state_ = RANS_L;
+    
+    // Encode in reverse order (rANS requirement)
+    for (int64_t i = static_cast<int64_t>(size) - 1; i >= 0; i--) {
+        put(data[i], output);
+    }
+    
+    // Flush final state
+    flush(output);
+    
+    return output;
+}
+
 // ============================================================================
 // Decoder
 // ============================================================================

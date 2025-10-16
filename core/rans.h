@@ -47,6 +47,12 @@ public:
     std::vector<uint8_t> encode(const uint8_t* data, size_t size);
     
     /**
+     * Encode data WITHOUT frequency table (for use with global freq table)
+     * @return Compressed data (size header + encoded data + state, NO freq table)
+     */
+    std::vector<uint8_t> encodeWithoutFreqTable(const uint8_t* data, size_t size);
+    
+    /**
      * Get symbol table for decoder
      */
     const RANSSymbol* getSymbolTable() const { return symbols_; }

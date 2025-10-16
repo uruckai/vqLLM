@@ -103,20 +103,19 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     }
     
     // PASS 2: Encode each tile using the shared frequency table
+    RANSEncoder tile_rans;
+    tile_rans.buildFrequencies(all_diffs_combined.data(), all_diffs_combined.size());
+    
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
         tile_metadata[tile_idx].data_offset = output.size();
         
-        // Encode this tile's differential data
-        RANSEncoder tile_rans;
-        // Copy global frequencies
-        tile_rans.buildFrequencies(all_diffs_combined.data(), all_diffs_combined.size());
-        std::vector<uint8_t> compressed = tile_rans.encode(all_tile_diffs[tile_idx].data(), 
-                                                           all_tile_diffs[tile_idx].size());
+        // Encode this tile's differential data WITHOUT frequency table
+        std::vector<uint8_t> compressed = tile_rans.encodeWithoutFreqTable(
+            all_tile_diffs[tile_idx].data(), 
+            all_tile_diffs[tile_idx].size());
         
-        // Only write the encoded data (size + state + data), not the freq table
-        // Skip the freq table (bytes 4-515) from the compressed output
-        output.insert(output.end(), compressed.begin(), compressed.begin() + 4);  // Size header
-        output.insert(output.end(), compressed.begin() + 516, compressed.end());   // State + data
+        // Write the compressed data (already excludes freq table)
+        output.insert(output.end(), compressed.begin(), compressed.end());
         
         tile_metadata[tile_idx].data_size = output.size() - tile_metadata[tile_idx].data_offset;
     }
