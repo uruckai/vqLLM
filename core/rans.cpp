@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <cstdio>
 
 namespace codec {
 
