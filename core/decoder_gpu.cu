@@ -39,9 +39,10 @@ __device__ void ransDecodeDevice(
     
     const uint8_t* read_ptr = state_ptr - 1;  // Read backwards from state
     
-    // Decode rANS data
-    uint8_t* diff_data = output;  // Decode directly into output buffer (will overwrite with differential decode)
+    // Decode rANS data - need temporary buffer for differential encoded values
+    uint8_t diff_data[65536];  // Temporary buffer for decoded differential values (256x256 max)
     size_t decode_count = min(stored_size, static_cast<uint32_t>(output_size));
+    decode_count = min(decode_count, static_cast<size_t>(65536));
     
     // rANS decode loop
     for (size_t i = 0; i < decode_count; i++) {

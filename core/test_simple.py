@@ -155,12 +155,12 @@ def test_library():
         # Test encoding/decoding with library
         print("\n--- Testing Library Encoding/Decoding ---")
 
-        # Create test data - 128x128 with single large tile for better rANS performance
+        # Create test data - 256x256 with single large tile for maximum rANS performance
         np.random.seed(42)
-        test_data = np.random.randint(-128, 127, (128, 128), dtype=np.int8)
+        test_data = np.random.randint(-128, 127, (256, 256), dtype=np.int8)
 
-        # Create encoder with 128x128 tiles (one tile = entire input)
-        encoder = lib.encoder_create(128)  # 128x128 tiles
+        # Create encoder with 256x256 tiles (one tile = entire input, 64KB data)
+        encoder = lib.encoder_create(256)  # 256x256 tiles
         if not encoder:
             print("✗ Failed to create encoder")
             return False
@@ -170,7 +170,7 @@ def test_library():
         output_ptr = ctypes.POINTER(ctypes.c_uint8)()
         output_size = ctypes.c_size_t()
 
-        ratio = lib.encoder_encode(encoder, data_ptr, 128, 128,
+        ratio = lib.encoder_encode(encoder, data_ptr, 256, 256,
                                   ctypes.byref(output_ptr), ctypes.byref(output_size))
 
         if ratio < 0:
@@ -191,7 +191,7 @@ def test_library():
                 return False
 
             # Decode data
-            decoded_data = np.zeros((128, 128), dtype=np.int8)
+            decoded_data = np.zeros((256, 256), dtype=np.int8)
             decoded_ptr = decoded_data.ctypes.data_as(ctypes.POINTER(ctypes.c_int8))
 
             decode_ratio = lib.decoder_decode(decoder, output_ptr, output_size.value, decoded_ptr)
