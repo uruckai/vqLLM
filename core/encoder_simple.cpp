@@ -103,33 +103,28 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
         output.push_back((symbols[i].freq >> 8) & 0xFF);
     }
     
-    // PASS 2: Encode each tile using the shared frequency table
-    RANSEncoder tile_rans;
-    tile_rans.buildFrequencies(all_diffs_combined.data(), all_diffs_combined.size());
-    
+    // PASS 2: Encode each tile
+    // For now, skip rANS and just use differential encoding (simpler, no expansion)
     size_t total_before_tiles = output.size();
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
         tile_metadata[tile_idx].data_offset = output.size();
         
-        // Encode this tile's differential data WITHOUT frequency table
-        std::vector<uint8_t> compressed = tile_rans.encodeWithoutFreqTable(
-            all_tile_diffs[tile_idx].data(), 
-            all_tile_diffs[tile_idx].size());
+        // Write size header
+        uint32_t tile_size = all_tile_diffs[tile_idx].size();
+        output.push_back((tile_size >> 0) & 0xFF);
+        output.push_back((tile_size >> 8) & 0xFF);
+        output.push_back((tile_size >> 16) & 0xFF);
+        output.push_back((tile_size >> 24) & 0xFF);
         
-        // Debug: print first tile's compressed size
-        if (tile_idx == 0) {
-            fprintf(stderr, "Tile 0: input=%zu bytes, compressed=%zu bytes\n", 
-                    all_tile_diffs[tile_idx].size(), compressed.size());
-        }
-        
-        // Write the compressed data (already excludes freq table)
-        output.insert(output.end(), compressed.begin(), compressed.end());
+        // Write differential data directly (no rANS for now - it expands small data)
+        output.insert(output.end(), all_tile_diffs[tile_idx].begin(), all_tile_diffs[tile_idx].end());
         
         tile_metadata[tile_idx].data_size = output.size() - tile_metadata[tile_idx].data_offset;
     }
     size_t total_tile_data = output.size() - total_before_tiles;
-    fprintf(stderr, "Total tiles: %u, total tile data: %zu bytes, avg per tile: %zu bytes\n",
-            num_tiles, total_tile_data, total_tile_data / num_tiles);
+    fprintf(stderr, "Differential only: %u tiles, %zu bytes total, %zu bytes/tile (input was %zu bytes/tile)\n",
+            num_tiles, total_tile_data, total_tile_data / num_tiles, 
+            all_tile_diffs[0].size());
     
     // Copy metadata into output buffer
     memcpy(output.data() + metadata_offset, tile_metadata.data(), num_tiles * sizeof(TileMetadata));
