@@ -15,8 +15,11 @@ extern "C" {
 // Encoder API
 void* encoder_create(uint16_t tile_size) {
     try {
-        return new Encoder(tile_size);
+        auto* enc = new Encoder(tile_size);
+        fprintf(stderr, "[C_API] encoder_create tile=%u -> %p\n", tile_size, (void*)enc);
+        return enc;
     } catch (...) {
+        fprintf(stderr, "[C_API] encoder_create failed\n");
         return nullptr;
     }
 }

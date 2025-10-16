@@ -198,6 +198,7 @@ def main():
             test_data = np.ascontiguousarray(flat[:256*256].reshape(256, 256))
             tile_source = "slice"
         print(f"  Tile source: {tile_source}, contiguous: {test_data.flags['C_CONTIGUOUS']}")
+        print(f"  Tile dtype: {test_data.dtype}, strides: {test_data.strides}")
         print(f"  Tile sample: {test_data[0,0]}, {test_data[0,1]}, {test_data[0,2]}, {test_data[0,3]}")
         
         print(f"\nCompressing 256×256 tile...")
