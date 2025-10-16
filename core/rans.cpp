@@ -61,8 +61,9 @@ void RANSEncoder::normalizeFrequencies() {
         }
         
         int32_t diff = static_cast<int32_t>(RANS_SCALE) - static_cast<int32_t>(sum);
-        scaled_freqs[max_idx] = std::max(1u, static_cast<uint32_t>(
-            static_cast<int32_t>(scaled_freqs[max_idx]) + diff));
+        int32_t new_freq = static_cast<int32_t>(scaled_freqs[max_idx]) + diff;
+        // Ensure frequency is at least 1 and doesn't overflow
+        scaled_freqs[max_idx] = std::max(1u, std::min(static_cast<uint32_t>(new_freq), RANS_SCALE - 255u));
     }
     
     // Build cumulative frequency table
@@ -83,6 +84,12 @@ void RANSEncoder::renormalize(std::vector<uint8_t>& output) {
 
 void RANSEncoder::put(uint8_t symbol, std::vector<uint8_t>& output) {
     const RANSSymbol& s = symbols_[symbol];
+    
+    // Safety check: frequency must be at least 1
+    if (s.freq == 0) {
+        fprintf(stderr, "ERROR: Symbol %d has zero frequency!\n", symbol);
+        return; // Skip encoding this symbol
+    }
     
     // Renormalize if needed
     uint32_t max_state = ((RANS_L >> RANS_SCALE_BITS) << 8) * s.freq;
