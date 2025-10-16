@@ -155,9 +155,9 @@ def test_library():
         # Test encoding/decoding with library
         print("\n--- Testing Library Encoding/Decoding ---")
 
-        # Create test data (same seed as our Python test)
+        # Create test data - LARGER to show compression benefits
         np.random.seed(42)
-        test_data = np.random.randint(-128, 127, (16, 16), dtype=np.int8)
+        test_data = np.random.randint(-128, 127, (128, 128), dtype=np.int8)
 
         # Create encoder
         encoder = lib.encoder_create(16)  # 16x16 tiles
@@ -170,7 +170,7 @@ def test_library():
         output_ptr = ctypes.POINTER(ctypes.c_uint8)()
         output_size = ctypes.c_size_t()
 
-        ratio = lib.encoder_encode(encoder, data_ptr, 16, 16,
+        ratio = lib.encoder_encode(encoder, data_ptr, 128, 128,
                                   ctypes.byref(output_ptr), ctypes.byref(output_size))
 
         if ratio < 0:
@@ -191,7 +191,7 @@ def test_library():
                 return False
 
             # Decode data
-            decoded_data = np.zeros((16, 16), dtype=np.int8)
+            decoded_data = np.zeros((128, 128), dtype=np.int8)
             decoded_ptr = decoded_data.ctypes.data_as(ctypes.POINTER(ctypes.c_int8))
 
             decode_ratio = lib.decoder_decode(decoder, output_ptr, output_size.value, decoded_ptr)
@@ -208,9 +208,10 @@ def test_library():
             
             if not matches:
                 print(f"  Max error: {np.max(np.abs(test_data - decoded_data))}")
-                print(f"  Mean error: {np.mean(np.abs(test_data - decoded_data))}")
-                print(f"  Original sample (first 2x2):\n{test_data[:2, :2]}")
-                print(f"  Decoded sample (first 2x2):\n{decoded_data[:2, :2]}")
+                print(f"  Mean error: {np.mean(np.abs(test_data - decoded_data)):.2f}")
+                print(f"  First mismatch at: {np.argwhere(test_data != decoded_data)[0]}")
+                print(f"  Original sample (first 4x4):\n{test_data[:4, :4]}")
+                print(f"  Decoded sample (first 4x4):\n{decoded_data[:4, :4]}")
 
             # Cleanup
             lib.decoder_destroy(decoder)
