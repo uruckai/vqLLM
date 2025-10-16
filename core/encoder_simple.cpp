@@ -88,8 +88,17 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
             }
             
             all_tile_diffs[tile_idx] = diff_data;
-            all_diffs_combined.insert(all_diffs_combined.end(), diff_data.begin(), diff_data.end());
+            
+            // Only accumulate up to 1MB of data to avoid memory issues
+            if (all_diffs_combined.size() < 1024 * 1024) {
+                all_diffs_combined.insert(all_diffs_combined.end(), diff_data.begin(), diff_data.end());
+            }
         }
+    }
+    
+    // Ensure we have some data for frequency table
+    if (all_diffs_combined.empty() && !all_tile_diffs.empty()) {
+        all_diffs_combined = all_tile_diffs[0];
     }
     
     // Build ONE global frequency table
