@@ -28,15 +28,19 @@ def load_codec():
 def test_compression(data, lib, description):
     """Test compression on a data tile"""
     try:
-        # Ensure 256x256
+        # Ensure 256x256 and contiguous
         if data.shape != (256, 256):
             flat = data.flatten()
             if len(flat) < 256*256:
-                padded = np.zeros((256, 256), dtype=np.int8)
+                padded = np.zeros((256, 256), dtype=np.int8, order='C')
                 padded.flat[:len(flat)] = flat
                 data = padded
             else:
-                data = flat[:256*256].reshape(256, 256)
+                data = flat[:256*256].reshape(256, 256).copy()  # Force contiguous copy
+        
+        # Ensure data is contiguous
+        if not data.flags['C_CONTIGUOUS']:
+            data = np.ascontiguousarray(data)
         
         # Encode
         encoder = lib.encoder_create(256)
