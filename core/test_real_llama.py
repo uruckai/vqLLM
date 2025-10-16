@@ -38,10 +38,11 @@ def download_and_test_llama():
         print("  export HF_TOKEN=your_token_here")
         print("Attempting download anyway...")
     
-    # Download a small Llama model
-    model_name = "meta-llama/Llama-3.2-1B"
+    # Download Llama model (using 3.1-8B which user has access to)
+    model_name = "meta-llama/Meta-Llama-3.1-8B"
     print(f"\nDownloading {model_name}...")
-    print("(This may take a few minutes on first run, ~5GB download)")
+    print("(This may take several minutes on first run, ~16GB download)")
+    print("Note: We only load weights, not running inference, so memory usage is low")
     
     try:
         # Try to load model with HF token
