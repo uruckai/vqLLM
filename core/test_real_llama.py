@@ -30,15 +30,24 @@ def download_and_test_llama():
         print("✗ Transformers not available. Install with: pip install transformers")
         return False
     
+    # HuggingFace token for gated models (from environment or default)
+    hf_token = os.environ.get('HF_TOKEN', None)
+    if not hf_token:
+        print("Warning: No HF_TOKEN environment variable set.")
+        print("To download Llama models, set your token:")
+        print("  export HF_TOKEN=your_token_here")
+        print("Attempting download anyway...")
+    
     # Download a small Llama model
     model_name = "meta-llama/Llama-3.2-1B"
     print(f"\nDownloading {model_name}...")
     print("(This may take a few minutes on first run, ~5GB download)")
     
     try:
-        # Try to load model (may require HF token for gated models)
+        # Try to load model with HF token
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
+            token=hf_token,
             torch_dtype=torch.float16,
             device_map="cpu",  # Keep on CPU to avoid GPU memory issues
             low_cpu_mem_usage=True
@@ -53,6 +62,7 @@ def download_and_test_llama():
             model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
+                token=hf_token,
                 torch_dtype=torch.float16,
                 device_map="cpu",
                 low_cpu_mem_usage=True
