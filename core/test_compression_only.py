@@ -188,13 +188,14 @@ def main():
             freq = count / weight_int8.size * 100
             print(f"    {val:4d}: {freq:5.2f}% ({count:,} occurrences)")
         
-        # Prepare 256x256 tile
+        # Prepare 256x256 tile (MUST be contiguous for C library)
         flat = weight_int8.flatten()
         if len(flat) < 256*256:
-            test_data = np.zeros((256, 256), dtype=np.int8)
+            test_data = np.zeros((256, 256), dtype=np.int8, order='C')
             test_data.flat[:len(flat)] = flat
         else:
-            test_data = flat[:256*256].reshape(256, 256)
+            # Force contiguous copy, not view
+            test_data = np.ascontiguousarray(flat[:256*256].reshape(256, 256))
         
         print(f"\nCompressing 256×256 tile...")
         result = test_compression(test_data, lib, name)
