@@ -18,28 +18,67 @@ struct RANSSymbol {
 };
 
 /**
- * Simple differential decode (no rANS for now - it expands small data)
+ * rANS decode on GPU (using shared frequency table)
  */
 __device__ void ransDecodeDevice(
     const uint8_t* stream, size_t stream_size,
     const RANSSymbol* symbols, int8_t* output, size_t output_size)
 {
-    // Stream format: 4 bytes (size header) + differential data
-    if (stream_size < 4) return;
+    // Stream format: 4 bytes (size header) + rANS encoded data + 4 bytes (state at end)
+    if (stream_size < 8) return;
 
     // Read output size
     uint32_t stored_size = (stream[0] << 0) | (stream[1] << 8) |
                           (stream[2] << 16) | (stream[3] << 24);
     if (stored_size != output_size) return;
 
-    // Read differential data directly (no rANS decoding)
-    size_t read_size = min(stored_size, static_cast<uint32_t>(output_size));
+    // Initialize rANS state from end of stream
+    const uint8_t* state_ptr = stream + stream_size - 4;
+    uint32_t state = (state_ptr[0] << 0) | (state_ptr[1] << 8) |
+                     (state_ptr[2] << 16) | (state_ptr[3] << 24);
     
-    // Apply differential decoding
+    const uint8_t* read_ptr = state_ptr - 1;  // Read backwards from state
+    
+    // Decode rANS data
+    uint8_t* diff_data = output;  // Decode directly into output buffer (will overwrite with differential decode)
+    size_t decode_count = min(stored_size, static_cast<uint32_t>(output_size));
+    
+    // rANS decode loop
+    for (size_t i = 0; i < decode_count; i++) {
+        // Find symbol from cumulative frequency
+        uint32_t cum_freq = state & 0xFFF;  // 12-bit scale
+        
+        uint8_t symbol = 0;
+        for (int j = 0; j < 256; j++) {
+            if (symbols[j].start <= cum_freq && 
+                cum_freq < symbols[j].start + symbols[j].freq) {
+                symbol = j;
+                break;
+            }
+        }
+        
+        const RANSSymbol& s = symbols[symbol];
+        
+        // Update rANS state
+        state = s.freq * (state >> 12) + (cum_freq - s.start);
+        
+        // Renormalize
+        while (state < (1u << 23)) {
+            if (read_ptr >= stream + 4) {
+                state = (state << 8) | (*read_ptr);
+                read_ptr--;
+            } else {
+                break;
+            }
+        }
+        
+        diff_data[i] = symbol;
+    }
+    
+    // Apply differential decoding in-place
     int32_t prev = 0;
-    for (size_t i = 0; i < read_size && (i + 4) < stream_size; i++) {
-        uint8_t diff_byte = stream[i + 4];
-        int32_t diff_temp = static_cast<int32_t>(diff_byte) - 128;
+    for (size_t i = 0; i < decode_count; i++) {
+        int32_t diff_temp = static_cast<int32_t>(diff_data[i]) - 128;
         int32_t diff = (diff_temp > 127) ? (diff_temp - 256) : diff_temp;
         int32_t current = prev + diff;
         output[i] = static_cast<int8_t>(current);

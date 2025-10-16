@@ -155,12 +155,12 @@ def test_library():
         # Test encoding/decoding with library
         print("\n--- Testing Library Encoding/Decoding ---")
 
-        # Create test data - LARGER to show compression benefits
+        # Create test data - 128x128 with single large tile for better rANS performance
         np.random.seed(42)
         test_data = np.random.randint(-128, 127, (128, 128), dtype=np.int8)
 
-        # Create encoder
-        encoder = lib.encoder_create(16)  # 16x16 tiles
+        # Create encoder with 128x128 tiles (one tile = entire input)
+        encoder = lib.encoder_create(128)  # 128x128 tiles
         if not encoder:
             print("✗ Failed to create encoder")
             return False
