@@ -79,8 +79,8 @@ __device__ void ransDecodeDevice(
     // Apply differential decoding in-place
     int32_t prev = 0;
     for (size_t i = 0; i < decode_count; i++) {
-        int32_t diff_temp = static_cast<int32_t>(diff_data[i]) - 128;
-        int32_t diff = (diff_temp > 127) ? (diff_temp - 256) : diff_temp;
+        // Decode: reverse of (diff + 128) & 0xFF
+        int32_t diff = static_cast<int32_t>(diff_data[i]) - 128;
         int32_t current = prev + diff;
         output[i] = static_cast<int8_t>(current);
         prev = current;
@@ -158,10 +158,8 @@ __global__ void decodeKernel(
     uint32_t tile_rows = min(header->tile_size, header->output_rows - row_start);
     uint32_t tile_cols = min(header->tile_size, header->output_cols - col_start);
     
-    // Shared memory for tile and frequency table
-    extern __shared__ int8_t shared_mem[];
-    int8_t* tile_data = shared_mem;
-    RANSSymbol* symbols = reinterpret_cast<RANSSymbol*>(shared_mem + 256);
+    // Only use shared memory for frequency table (not tile data - too large for 256x256)
+    extern __shared__ RANSSymbol symbols[];
     
     // Thread 0 loads global frequency table into shared memory
     if (threadIdx.x == 0) {
@@ -176,34 +174,23 @@ __global__ void decodeKernel(
     }
     __syncthreads();
     
-    // Thread 0 does rANS decode
+    // Thread 0 does rANS decode + reconstruction
     if (threadIdx.x == 0) {
         const TileMetadata& meta = tile_metadata[tile_idx];
         const uint8_t* tile_stream = compressed + meta.data_offset;
         
-        ransDecodeDevice(tile_stream, meta.data_size, symbols, 
-                        tile_data, tile_rows * tile_cols);
-    }
-    __syncthreads();
-    
-    // Thread 0 does reconstruction
-    if (threadIdx.x == 0) {
-        const TileMetadata& meta = tile_metadata[tile_idx];
+        // Calculate output position for this tile
+        int8_t* tile_output = output + tile_idx * header->tile_size * header->tile_size;
         
-        // Context pointers (simplified - no boundary handling for now)
+        // Decode rANS directly to tile position
+        ransDecodeDevice(tile_stream, meta.data_size, symbols, 
+                        tile_output, tile_rows * tile_cols);
+        
+        // Reconstruct in-place
         const int8_t* left = nullptr;
         const int8_t* top = nullptr;
-        
-        reconstructDevice(tile_data, tile_rows, tile_cols, left, top,
+        reconstructDevice(tile_output, tile_rows, tile_cols, left, top,
                          static_cast<PredictorMode>(meta.predictor_mode));
-    }
-    __syncthreads();
-    
-    // All threads cooperate to write output
-    for (uint32_t i = threadIdx.x; i < tile_rows * tile_cols; i += blockDim.x) {
-        uint32_t r = i / tile_cols;
-        uint32_t c = i % tile_cols;
-        output[(row_start + r) * header->output_cols + col_start + c] = tile_data[i];
     }
 }
 
@@ -230,8 +217,8 @@ extern "C" void launchDecodeKernel(
     const uint8_t* d_global_freq_table = d_compressed + sizeof(codec::Header) + metadata_size;
     
     // Shared memory: tile data + frequency table symbols
-    size_t shared_mem = h_header.tile_size * h_header.tile_size * sizeof(int8_t) + 
-                       256 * sizeof(codec::RANSSymbol);
+    // Only need shared memory for RANSSymbol table (2KB), not the full tile
+    size_t shared_mem = 256 * sizeof(codec::RANSSymbol);
     
     // Launch one block per tile, 256 threads per block
     codec::decodeKernel<<<num_tiles, 256, shared_mem, stream>>>(
