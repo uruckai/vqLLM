@@ -11,6 +11,7 @@ find_package(CUDAToolkit REQUIRED)
 set(SOURCES
     encoder_simple.cpp
     decoder_host.cpp
+    rans.cpp
     c_api.cpp
 )
 

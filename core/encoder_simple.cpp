@@ -1,9 +1,10 @@
 /**
  * @file encoder_simple.cpp
- * @brief Simplified encoder that definitely works
+ * @brief Simplified encoder with rANS compression
  */
 
 #include "encoder.h"
+#include "rans.h"
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -94,27 +95,24 @@ void Encoder::encodeTile(const int8_t* tile, uint32_t tile_rows, uint32_t tile_c
     predict(tile, residual.data(), tile_rows, tile_cols, left, top,
            static_cast<PredictorMode>(metadata.predictor_mode));
 
-    // Simple differential encoding (use int32 to avoid overflow)
-    std::vector<uint8_t> encoded;
+    // Differential encoding (use int32 to avoid overflow)
+    std::vector<uint8_t> diff_data(tile_size);
     int32_t prev = 0;
 
-    // Write size header (4 bytes)
-    uint32_t data_size = static_cast<uint32_t>(tile_size);
-    encoded.push_back((data_size >> 0) & 0xFF);
-    encoded.push_back((data_size >> 8) & 0xFF);
-    encoded.push_back((data_size >> 16) & 0xFF);
-    encoded.push_back((data_size >> 24) & 0xFF);
-
-    // Write differential data
     for (size_t i = 0; i < tile_size; i++) {
         int32_t current = static_cast<int32_t>(residual[i]);
         int32_t diff = current - prev;
-        encoded.push_back(static_cast<uint8_t>((diff + 128) & 0xFF));  // Center and clamp
+        diff_data[i] = static_cast<uint8_t>((diff + 128) & 0xFF);  // Center and clamp
         prev = current;
     }
 
+    // Compress with rANS
+    RANSEncoder rans;
+    rans.buildFrequencies(diff_data.data(), diff_data.size());
+    std::vector<uint8_t> compressed = rans.encode(diff_data.data(), diff_data.size());
+
     // Copy to output
-    output.insert(output.end(), encoded.begin(), encoded.end());
+    output.insert(output.end(), compressed.begin(), compressed.end());
 }
 
 PredictorMode Encoder::selectPredictor(const int8_t* tile, uint32_t rows, uint32_t cols,
