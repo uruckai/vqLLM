@@ -16,6 +16,14 @@ def download_and_test_llama():
     print("Real Llama Weight Compression Test")
     print("="*70)
     
+    # Disable hf_transfer if not installed (avoids download errors)
+    if os.environ.get('HF_HUB_ENABLE_HF_TRANSFER') == '1':
+        try:
+            import hf_transfer
+        except ImportError:
+            print("Note: Disabling HF_HUB_ENABLE_HF_TRANSFER (hf_transfer not installed)")
+            os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = '0'
+    
     try:
         import torch
         print("✓ PyTorch available")
