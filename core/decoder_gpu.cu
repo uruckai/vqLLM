@@ -16,36 +16,15 @@ __device__ void ransDecodeDevice(
     const uint8_t* stream, size_t stream_size,
     const uint32_t* freqs, int8_t* output, size_t output_size)
 {
-    // Debug: print first call info
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("GPU Decode: stream_size=%zu, output_size=%zu\n", stream_size, output_size);
-        if (stream_size >= 4) {
-            printf("  First 4 header bytes: %u %u %u %u\n", 
-                   stream[0], stream[1], stream[2], stream[3]);
-        }
-    }
-    
     // Read size header (4 bytes)
-    if (stream_size < 4) {
-        printf("GPU Decode ERROR: stream_size < 4\n");
-        return;
-    }
+    if (stream_size < 4) return;
 
     uint32_t data_size = (stream[0] << 0) | (stream[1] << 8) |
                         (stream[2] << 16) | (stream[3] << 24);
-    
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("  data_size from header: %u\n", data_size);
-    }
 
     // Read differential data
     size_t read_size = min(data_size, static_cast<uint32_t>(output_size));
     int32_t prev = 0;  // Use int32 to avoid overflow
-    
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("  read_size: %zu, first 4 data bytes: %u %u %u %u\n", 
-               read_size, stream[4], stream[5], stream[6], stream[7]);
-    }
 
     for (size_t i = 0; i < read_size && (i + 4) < stream_size; i++) {
         uint8_t diff_byte = stream[i + 4];
@@ -58,16 +37,6 @@ __device__ void ransDecodeDevice(
         int32_t current = prev + diff;
         output[i] = static_cast<int8_t>(current);
         prev = current;
-        
-        // Debug first few values
-        if (threadIdx.x == 0 && blockIdx.x == 0 && i < 4) {
-            printf("    [%zu] byte=%u, diff_temp=%d, diff=%d, prev=%d, current=%d, out=%d\n",
-                   i, diff_byte, diff_temp, diff, static_cast<int>(prev - diff), current, output[i]);
-        }
-    }
-    
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("  Decoded %zu values\n", read_size);
     }
 }
 
@@ -147,12 +116,6 @@ __global__ void decodeKernel(
     // Thread 0 does rANS decode
     if (threadIdx.x == 0) {
         const TileMetadata& meta = tile_metadata[tile_idx];
-        
-        if (tile_idx == 0) {
-            printf("Tile 0 metadata: data_offset=%u, data_size=%u, predictor=%d\n",
-                   meta.data_offset, meta.data_size, meta.predictor_mode);
-        }
-        
         const uint8_t* tile_stream = compressed + meta.data_offset;
         
         ransDecodeDevice(tile_stream, meta.data_size, meta.freq_table, 
