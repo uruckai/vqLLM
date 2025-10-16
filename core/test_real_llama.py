@@ -54,13 +54,14 @@ def download_and_test_llama():
     
     try:
         # Try to load model with HF token
+        # Note: Not using device_map to avoid accelerate dependency
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             token=hf_token,
             torch_dtype=torch.float16,
-            device_map="cpu",  # Keep on CPU to avoid GPU memory issues
             low_cpu_mem_usage=True
         )
+        model = model.to('cpu')  # Move to CPU explicitly
         print(f"✓ Model loaded: {model_name}")
     except Exception as e:
         print(f"✗ Failed to download model: {e}")
@@ -73,9 +74,9 @@ def download_and_test_llama():
                 model_name,
                 token=hf_token,
                 torch_dtype=torch.float16,
-                device_map="cpu",
                 low_cpu_mem_usage=True
             )
+            model = model.to('cpu')
             print(f"✓ Model loaded: {model_name}")
         except Exception as e2:
             print(f"✗ Failed to download alternative: {e2}")
