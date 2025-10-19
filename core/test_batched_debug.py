@@ -65,25 +65,46 @@ print(f"Ratio: {ratio:.2f}x")
 # Read compressed data
 compressed_bytes = bytes(ctypes.cast(compressed_ptr, ctypes.POINTER(ctypes.c_uint8 * compressed_size.value)).contents)
 
-# Parse header
-header_size = 32  # LayerHeader size
-rows_read, cols_read, tile_size, num_tiles = struct.unpack_from('IIII', compressed_bytes, 0)
+# Parse header (according to format_batched.h)
+# struct LayerHeader {
+#     uint32_t magic;              // offset 0
+#     uint16_t version;            // offset 4
+#     uint16_t tile_size;          // offset 6
+#     uint32_t rows;               // offset 8
+#     uint32_t cols;               // offset 12
+#     uint16_t num_tiles_row;      // offset 16
+#     uint16_t num_tiles_col;      // offset 18
+#     uint32_t num_tiles;          // offset 20
+#     uint32_t compressed_size;    // offset 24
+#     uint32_t tile_index_offset;  // offset 28
+#     uint32_t tile_data_offset;   // offset 32
+#     uint8_t predictor_mode;      // offset 36
+#     uint8_t padding[3];          // offset 37-39
+# };
+header_fmt = 'IHHIIHHI IIIBxxx'  # Total 40 bytes
+(magic, version, tile_size, rows_read, cols_read, num_tiles_row, num_tiles_col, num_tiles,
+ compressed_size, tile_index_offset_val, tile_data_offset_val, predictor_mode) = struct.unpack_from(header_fmt, compressed_bytes, 0)
+
 print(f"\nHeader:")
-print(f"  rows={rows_read}, cols={cols_read}, tile_size={tile_size}, num_tiles={num_tiles}")
+print(f"  magic=0x{magic:08x}, version={version}")
+print(f"  rows={rows_read}, cols={cols_read}, tile_size={tile_size}")
+print(f"  num_tiles={num_tiles} ({num_tiles_row}x{num_tiles_col})")
+print(f"  compressed_size={compressed_size}")
+print(f"  tile_index_offset={tile_index_offset_val}")
+print(f"  tile_data_offset={tile_data_offset_val}")
 
 # Find RANS table
-rans_table_offset = header_size
+rans_table_offset = 40  # After header
 rans_table_size = 1024
 print(f"\nRANS table at offset {rans_table_offset}, size {rans_table_size}")
 
-# Find tile index
-tile_index_offset_val = struct.unpack_from('Q', compressed_bytes, 16)[0]
-tile_index_size = 20  # TileIndexEntry size
-print(f"\nTile index at offset {tile_index_offset_val}")
+# Tile index info
+tile_index_size = 12  # TileIndexEntry: uint32_t + uint32_t + uint16_t + uint16_t = 12 bytes
+print(f"\nTile index at offset {tile_index_offset_val}, size {tile_index_size} bytes/entry")
 
 # Read first tile index entry
-tile_offset, tile_comp_size, tile_row, tile_col = struct.unpack_from('QIII', compressed_bytes, tile_index_offset_val)
-tile_data_offset_val = struct.unpack_from('Q', compressed_bytes, 24)[0]
+# struct TileIndexEntry { uint32_t offset; uint32_t compressed_size; uint16_t row; uint16_t col; };
+tile_offset, tile_comp_size, tile_row, tile_col = struct.unpack_from('IIHH', compressed_bytes, tile_index_offset_val)
 absolute_tile_offset = tile_data_offset_val + tile_offset
 
 print(f"\nTile 0:")
