@@ -59,25 +59,29 @@ float BatchedCPUDecoder::decodeLayer(const std::vector<uint8_t>& compressed, int
         
         // Decode symbols
         std::vector<uint8_t> diff_data(uncompressed_size);
+        const uint32_t RANS_SCALE = 1 << 12;  // 4096
+        const uint32_t RANS_L = 1 << 23;      // 8388608
+        
         for (size_t i = 0; i < uncompressed_size; i++) {
-            // Find symbol by binary search on cumulative frequency
-            uint32_t cumul = state & ((1 << 12) - 1);  // RANS_SCALE_BITS
+            // Find symbol using cumulative frequency
+            uint32_t cum_freq = state & (RANS_SCALE - 1);
             
-            // Binary search for symbol
+            // Linear search for symbol (same as rans.cpp)
             uint8_t symbol = 0;
-            for (int bit = 7; bit >= 0; --bit) {
-                uint8_t test_sym = symbol | (1 << bit);
-                if (test_sym < 256 && rans_table[test_sym].start <= cumul) {
-                    symbol = test_sym;
+            for (int s = 0; s < 256; s++) {
+                if (rans_table[s].start <= cum_freq && 
+                    cum_freq < rans_table[s].start + rans_table[s].freq) {
+                    symbol = s;
+                    break;
                 }
             }
             
             // Update state
-            const RANSSymbol& s = rans_table[symbol];
-            state = s.freq * (state >> 12) + (cumul - s.start);
+            const RANSSymbol& sym = rans_table[symbol];
+            state = sym.freq * (state >> 12) + (cum_freq - sym.start);
             
             // Renormalize
-            while (state < (1 << 23)) {  // RANS_L
+            while (state < RANS_L) {
                 state = (state << 8) | (*data_ptr--);
             }
             
