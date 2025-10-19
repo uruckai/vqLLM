@@ -7,6 +7,7 @@
 #include "decoder_host.h"
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 
 using namespace codec;
 
