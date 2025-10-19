@@ -110,6 +110,9 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     if (all_diffs_combined.empty() && !all_tile_diffs.empty()) {
         all_diffs_combined = all_tile_diffs[0];
     }
+    fprintf(stderr, "[ENC] freq sample size=%zu tiles=%u\n",
+            all_diffs_combined.size(), num_tiles);
+    fflush(stderr);
     
     // Build ONE global frequency table
     RANSEncoder global_rans;
@@ -129,6 +132,9 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     size_t total_before_tiles = output.size();
     size_t total_input_bytes = 0;
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
+        fprintf(stderr, "[ENC] encoding tile %u/%u size=%zu\n",
+                tile_idx, num_tiles, all_tile_diffs[tile_idx].size());
+        fflush(stderr);
         tile_metadata[tile_idx].data_offset = output.size();
         
         total_input_bytes += all_tile_diffs[tile_idx].size();
@@ -137,6 +143,9 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
         std::vector<uint8_t> compressed = tile_rans.encodeWithoutFreqTable(
             all_tile_diffs[tile_idx].data(), 
             all_tile_diffs[tile_idx].size());
+        fprintf(stderr, "[ENC] tile %u compressed size=%zu\n",
+                tile_idx, compressed.size());
+        fflush(stderr);
         
         // Write compressed tile data
         output.insert(output.end(), compressed.begin(), compressed.end());
