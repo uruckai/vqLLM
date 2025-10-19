@@ -18,6 +18,8 @@ import sys
 import time
 from pathlib import Path
 import gc
+import torch
+import torch.nn as nn
 
 def load_codec():
     """Load the codec library"""
@@ -70,8 +72,6 @@ class CompressedTensor:
     
     def __init__(self, codec_lib, original_tensor):
         """Compress and store a tensor"""
-        import torch
-        
         self.lib = codec_lib
         self.device = original_tensor.device
         
@@ -134,8 +134,6 @@ class CompressedTensor:
     
     def decompress(self):
         """Decompress and return the tensor"""
-        import torch
-        
         # Decompress all tiles
         decoder = self.lib.decoder_create()
         all_data = []
@@ -158,9 +156,13 @@ class CompressedTensor:
         # Concatenate and trim to original size
         full_data = np.concatenate(all_data)[:self.num_elements]
         
-        # Dequantize
-        if self.dtype in [np.float16, np.float32]:
-            full_data = full_data.astype(self.dtype) * self.scale
+        # Dequantize - MUST convert to original dtype
+        if self.dtype in [torch.float16, torch.float32]:
+            # Convert int8 -> float with proper dtype
+            if self.dtype == torch.float16:
+                full_data = full_data.astype(np.float16) * self.scale
+            else:
+                full_data = full_data.astype(np.float32) * self.scale
         
         # Reshape and convert to tensor
         result = full_data.reshape(self.shape)
@@ -172,15 +174,20 @@ class CompressedTensor:
         """Return compression ratio"""
         return self.original_size / self.compressed_size
 
-class CompressedLinear:
+class CompressedLinear(torch.nn.Module):
     """Replacement for nn.Linear that uses compressed weights"""
     
     def __init__(self, original_linear, codec_lib):
         """Wrap a linear layer with compressed weights"""
+        super().__init__()
+        
         self.compressed_weight = CompressedTensor(codec_lib, original_linear.weight.data)
         
-        # Store bias uncompressed (usually small)
-        self.bias = original_linear.bias.data if original_linear.bias is not None else None
+        # Store bias uncompressed (usually small) as a parameter
+        if original_linear.bias is not None:
+            self.register_buffer('bias', original_linear.bias.data.clone())
+        else:
+            self.bias = None
         
         # Store original layer attributes
         self.in_features = original_linear.in_features
@@ -192,9 +199,6 @@ class CompressedLinear:
     
     def forward(self, x):
         """Forward pass: decompress weights, compute, free"""
-        import torch
-        import torch.nn.functional as F
-        
         # Decompress weights
         start = time.time()
         weight = self.compressed_weight.decompress()
@@ -202,7 +206,7 @@ class CompressedLinear:
         self.decode_count += 1
         
         # Compute
-        output = F.linear(x, weight, self.bias)
+        output = nn.functional.linear(x, weight, self.bias)
         
         # Free decompressed weights immediately
         del weight
@@ -211,8 +215,6 @@ class CompressedLinear:
 
 def compress_model_weights(model, codec_lib, verbose=True):
     """Replace all Linear layers in model with CompressedLinear"""
-    import torch.nn as nn
-    
     compressed_count = 0
     total_original_size = 0
     total_compressed_size = 0
@@ -274,7 +276,6 @@ def test_low_memory_inference():
     # Load PyTorch and Transformers
     print("\n[2/5] Loading PyTorch and Transformers...")
     try:
-        import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
         print("✓ Libraries loaded")
     except ImportError as e:
