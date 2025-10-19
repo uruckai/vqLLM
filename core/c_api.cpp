@@ -31,10 +31,14 @@ void encoder_destroy(void* encoder) {
 
 float encoder_encode(void* encoder, const int8_t* data, uint32_t rows, uint32_t cols,
                     uint8_t** output, size_t* output_size) {
+    fprintf(stderr, "[C_API] encoder_encode called enc=%p rows=%u cols=%u\n", encoder, rows, cols);
+    fflush(stderr);
     try {
         auto* enc = static_cast<Encoder*>(encoder);
         std::vector<uint8_t> compressed;
         
+        fprintf(stderr, "[C_API] calling enc->encode\n");
+        fflush(stderr);
         float ratio = enc->encode(data, rows, cols, compressed);
         
         // Allocate output buffer
