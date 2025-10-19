@@ -52,19 +52,21 @@ __global__ void decodeTilesBatched(
     // Decode pointer (just before state)
     int decode_pos = compressed_size - 5;
     
-    // Shared memory for decoded differential data
-    __shared__ uint8_t s_diff[256 * 256];
+    // NO shared memory - use global memory directly to avoid 48KB limit
+    // Each thread will write directly to global output
     
-    // Decode rANS (each thread decodes a portion)
-    uint32_t threads_per_block = blockDim.x;
-    uint32_t tid = threadIdx.x;
+    // SIMPLIFIED: Single-threaded decode per tile to avoid shared memory
+    // Only thread 0 does the work (not optimal but avoids 48KB limit)
+    if (threadIdx.x != 0) return;
     
-    // Decode in parallel chunks
-    for (uint32_t i = tid; i < uncompressed_size; i += threads_per_block) {
-        // Find symbol by binary search on cumulative frequency
-        uint32_t cumul = state & ((1 << 12) - 1);  // RANS_SCALE_BITS = 12
+    // Allocate temporary buffer in global memory (slower but works)
+    uint8_t* diff_buffer = new uint8_t[uncompressed_size];
+    
+    // Decode rANS sequentially
+    for (int i = uncompressed_size - 1; i >= 0; i--) {
+        // Find symbol by binary search
+        uint32_t cumul = state & ((1 << 12) - 1);
         
-        // Binary search (using rans.h RANSSymbol with start/freq fields)
         uint32_t sym = 0;
         for (int bit = 7; bit >= 0; --bit) {
             uint32_t test_sym = sym | (1 << bit);
@@ -73,71 +75,50 @@ __global__ void decodeTilesBatched(
             }
         }
         
-        // Decode symbol (RANSSymbol from rans.h has start and freq)
         const RANSSymbol& s = d_rans_table[sym];
         state = s.freq * (state >> 12) + (cumul - s.start);
         
         // Renormalize
-        while (state < (1 << 23) && decode_pos >= 0) {  // RANS_L
+        while (state < (1 << 23) && decode_pos >= 0) {
             state = (state << 8) | tile_compressed[decode_pos--];
         }
         
-        // Store decoded differential (in reverse order)
-        s_diff[uncompressed_size - 1 - i] = sym;
+        diff_buffer[i] = sym;
     }
     
-    __syncthreads();
+    // Apply inverse differential encoding (LEFT predictor)
+    uint32_t tile_row = entry.row;
+    uint32_t tile_col = entry.col;
     
-    // Apply inverse differential encoding
-    // Thread 0 handles first pixel, then parallel for rest
-    if (tid == 0) {
-        int32_t val = static_cast<int32_t>(s_diff[0]) - 128;
-        
-        // Calculate output position
-        uint32_t tile_row = entry.row;
-        uint32_t tile_col = entry.col;
-        uint32_t out_row = tile_row * tile_size;
-        uint32_t out_col = tile_col * tile_size;
-        
-        if (out_row < output_cols && out_col < output_cols) {  // bounds check
-            d_output[out_row * output_cols + out_col] = static_cast<int8_t>(val);
-        }
+    // First pixel
+    int32_t val = static_cast<int32_t>(diff_buffer[0]) - 128;
+    uint32_t out_row = tile_row * tile_size;
+    uint32_t out_col = tile_col * tile_size;
+    if (out_row < output_cols && out_col < output_cols) {
+        d_output[out_row * output_cols + out_col] = static_cast<int8_t>(val);
     }
     
-    __syncthreads();
-    
-    // Reconstruct remaining pixels in parallel (LEFT predictor)
-    for (uint32_t i = 1 + tid; i < uncompressed_size; i += threads_per_block) {
+    // Remaining pixels
+    for (uint32_t i = 1; i < uncompressed_size; i++) {
         uint32_t local_row = i / tile_size;
         uint32_t local_col = i % tile_size;
         
-        // Get prediction from left
-        int32_t pred_val;
-        if (local_col == 0 && local_row > 0) {
-            // First column: predict from above (stored in shared mem)
-            uint32_t pred_idx = (local_row - 1) * tile_size + local_col;
-            int32_t diff = static_cast<int32_t>(s_diff[pred_idx]) - 128;
-            pred_val = static_cast<int32_t>(static_cast<int8_t>(diff));
-        } else {
-            // Use left pixel
-            uint32_t pred_idx = i - 1;
-            int32_t diff = static_cast<int32_t>(s_diff[pred_idx]) - 128;
-            pred_val = static_cast<int32_t>(static_cast<int8_t>(diff));
-        }
+        // Get previous reconstructed value
+        int32_t pred_val = static_cast<int32_t>(d_output[(tile_row * tile_size + local_row) * output_cols + 
+                                                         (tile_col * tile_size + local_col - 1)]);
         
-        int32_t residual = static_cast<int32_t>(s_diff[i]) - 128;
-        int32_t val = pred_val + residual;
+        int32_t residual = static_cast<int32_t>(diff_buffer[i]) - 128;
+        val = pred_val + residual;
         
-        // Write to global output
-        uint32_t tile_row = entry.row;
-        uint32_t tile_col = entry.col;
-        uint32_t out_row = tile_row * tile_size + local_row;
-        uint32_t out_col = tile_col * tile_size + local_col;
+        out_row = tile_row * tile_size + local_row;
+        out_col = tile_col * tile_size + local_col;
         
         if (out_row < output_cols && out_col < output_cols) {
             d_output[out_row * output_cols + out_col] = static_cast<int8_t>(val);
         }
     }
+    
+    delete[] diff_buffer;
 }
 
 // Kernel launcher

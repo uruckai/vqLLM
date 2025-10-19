@@ -4,6 +4,7 @@
  */
 
 #include "decoder_batched.h"
+#include "rans.h"  // For RANSSymbol
 #include <cuda_runtime.h>
 #include <cstring>
 #include <iostream>
