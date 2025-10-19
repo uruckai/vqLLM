@@ -10,6 +10,7 @@ import struct
 lib = ctypes.CDLL('./build/libcodec_core.so')
 
 # Encoder
+lib.batched_encoder_create.argtypes = [ctypes.c_uint16]
 lib.batched_encoder_create.restype = ctypes.c_void_p
 lib.batched_encoder_destroy.argtypes = [ctypes.c_void_p]
 lib.batched_encoder_encode_layer.argtypes = [
@@ -46,7 +47,7 @@ print(f"Original: ({rows}, {cols}), {data.nbytes} bytes")
 print(f"Sample values: {data[0, :8]}")
 
 # Encode
-encoder = lib.batched_encoder_create()
+encoder = lib.batched_encoder_create(256)  # tile_size
 compressed_ptr = ctypes.POINTER(ctypes.c_uint8)()
 compressed_size = ctypes.c_size_t()
 
