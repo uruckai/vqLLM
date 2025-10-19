@@ -102,30 +102,14 @@ float BatchedCPUDecoder::decodeLayer(const std::vector<uint8_t>& compressed, int
             output[out_row * header->cols + out_col] = static_cast<int8_t>(val);
         }
         
-        // Remaining pixels
+        // Remaining pixels (simple LEFT predictor: use immediately previous pixel)
         for (uint32_t i = 1; i < uncompressed_size; i++) {
             uint32_t local_row = i / tile_size;
             uint32_t local_col = i % tile_size;
             
-            // Get previous reconstructed value (LEFT predictor)
-            int32_t pred_val;
-            if (local_col == 0 && local_row > 0) {
-                // First column, use pixel above
-                uint32_t pred_row = tile_row * tile_size + local_row - 1;
-                uint32_t pred_col = tile_col * tile_size + local_col;
-                pred_val = static_cast<int32_t>(output[pred_row * header->cols + pred_col]);
-            } else if (local_col > 0) {
-                // Use left pixel
-                uint32_t pred_row = tile_row * tile_size + local_row;
-                uint32_t pred_col = tile_col * tile_size + local_col - 1;
-                pred_val = static_cast<int32_t>(output[pred_row * header->cols + pred_col]);
-            } else {
-                // First pixel of tile (shouldn't happen after pixel 0)
-                pred_val = 0;
-            }
-            
+            // LEFT predictor: always use previous pixel (i-1)
             int32_t residual = static_cast<int32_t>(diff_data[i]) - 128;
-            val = pred_val + residual;
+            val = val + residual;  // val holds the previous reconstructed pixel
             
             out_row = tile_row * tile_size + local_row;
             out_col = tile_col * tile_size + local_col;
