@@ -67,7 +67,7 @@ struct TileIndexEntry {
 
 static constexpr uint32_t BATCHED_MAGIC = 0xC0DEC111;
 static constexpr uint16_t BATCHED_VERSION = 1;
-static constexpr size_t RANS_TABLE_SIZE = 256 * 4;  // 256 symbols × 4 bytes (using rans.h RANSSymbol)
+static constexpr size_t RANS_TABLE_SIZE = 1024;  // 256 symbols × 4 bytes (RANSSymbol from rans.h)
 
 } // namespace codec
 
