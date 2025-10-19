@@ -190,10 +190,12 @@ class CachedCompressedLinear(torch.nn.Module):
         self.compressed_weight.device = x.device
         
         # Check global cache
+        cache_hit = False
         if self.enable_cache and self.layer_id in CachedCompressedLinear._global_cache:
             # Move to front (most recently used)
             weight = CachedCompressedLinear._global_cache.pop(self.layer_id)
             CachedCompressedLinear._global_cache[self.layer_id] = weight
+            cache_hit = True
         else:
             # Decompress
             weight = self.compressed_weight.decompress()
@@ -209,8 +211,15 @@ class CachedCompressedLinear(torch.nn.Module):
                     if x.device.type == 'cuda':
                         torch.cuda.empty_cache()
         
-        self.decode_time += time.time() - start
+        decode_time = time.time() - start
+        self.decode_time += decode_time
         self.decode_count += 1
+        
+        # Progress indicator every 100 operations
+        if self.decode_count % 100 == 0:
+            hit_str = "HIT" if cache_hit else "MISS"
+            cached = len(CachedCompressedLinear._global_cache)
+            print(f"  [Layer {self.decode_count:4d}] {hit_str:4s} decode={decode_time*1000:5.1f}ms cached={cached}/20", flush=True)
         
         # Compute
         output = nn.functional.linear(x, weight, self.bias)
@@ -377,20 +386,49 @@ def test_cached_inference():
     # Run inference
     print("\n  Running inference with cached decompression...")
     print("  (First few layers will be slow, then cache kicks in)")
+    print("  Generating 5 tokens with progress indicators...\n")
     
     if device == 'cuda':
         torch.cuda.reset_peak_memory_stats()
         model = model.to('cuda')
         inputs = {k: v.to('cuda') for k, v in inputs.items()}
     
+    # Custom generation loop with progress
     cached_start = time.time()
+    input_ids = inputs['input_ids']
+    attention_mask = inputs.get('attention_mask', None)
+    
+    print(f"  Token 0: Starting generation...", flush=True)
+    
     with torch.no_grad():
-        cached_output = model.generate(
-            **inputs,
-            max_new_tokens=5,
-            do_sample=False,
-            pad_token_id=tokenizer.eos_token_id
-        )
+        for token_idx in range(5):
+            token_start = time.time()
+            
+            # Forward pass
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            next_token_logits = outputs.logits[:, -1, :]
+            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+            
+            # Append to sequence
+            input_ids = torch.cat([input_ids, next_token], dim=-1)
+            if attention_mask is not None:
+                attention_mask = torch.cat([attention_mask, torch.ones((1, 1), device=device)], dim=-1)
+            
+            token_time = time.time() - token_start
+            elapsed = time.time() - cached_start
+            token_text = tokenizer.decode(next_token[0], skip_special_tokens=True)
+            
+            # Get current cache stats
+            cache_stats = CachedCompressedLinear.get_cache_stats()
+            
+            print(f"  Token {token_idx+1}: '{token_text}' ({token_time:.1f}s, total {elapsed:.1f}s, cache={cache_stats['cached_layers']}/20)", flush=True)
+            
+            # Stop if EOS
+            if next_token[0, 0] == tokenizer.eos_token_id:
+                print(f"  [EOS token reached]", flush=True)
+                break
+    
+    cached_output = input_ids
     cached_time = time.time() - cached_start
     
     if device == 'cuda':
