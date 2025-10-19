@@ -16,8 +16,8 @@ Encoder::Encoder(uint16_t tile_size) : tile_size_(tile_size) {}
 
 float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
                      std::vector<uint8_t>& output) {
-    fprintf(stderr, "[ENC] start encode rows=%u cols=%u tile=%u\n",
-            rows, cols, tile_size_);
+    // fprintf(stderr, "[ENC] start encode rows=%u cols=%u tile=%u\n",
+    //         rows, cols, tile_size_);
     // Calculate tiling
     uint32_t num_tiles_row = (rows + tile_size_ - 1) / tile_size_;
     uint32_t num_tiles_col = (cols + tile_size_ - 1) / tile_size_;
@@ -88,14 +88,14 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
                 diff_data[i] = static_cast<uint8_t>((diff + 128) & 0xFF);
                 prev = current;
             }
-            if (tile_idx == 0) {
-                fprintf(stderr, "[ENC] tile0 size=%zu diff_data[0..3]=%u %u %u %u\n",
-                        diff_data.size(),
-                        diff_data.size() > 0 ? diff_data[0] : 0,
-                        diff_data.size() > 1 ? diff_data[1] : 0,
-                        diff_data.size() > 2 ? diff_data[2] : 0,
-                        diff_data.size() > 3 ? diff_data[3] : 0);
-            }
+            // if (tile_idx == 0) {
+            //     fprintf(stderr, "[ENC] tile0 size=%zu diff_data[0..3]=%u %u %u %u\n",
+            //             diff_data.size(),
+            //             diff_data.size() > 0 ? diff_data[0] : 0,
+            //             diff_data.size() > 1 ? diff_data[1] : 0,
+            //             diff_data.size() > 2 ? diff_data[2] : 0,
+            //             diff_data.size() > 3 ? diff_data[3] : 0);
+            // }
             
             all_tile_diffs[tile_idx] = diff_data;
             
@@ -110,9 +110,9 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     if (all_diffs_combined.empty() && !all_tile_diffs.empty()) {
         all_diffs_combined = all_tile_diffs[0];
     }
-    fprintf(stderr, "[ENC] freq sample size=%zu tiles=%u\n",
-            all_diffs_combined.size(), num_tiles);
-    fflush(stderr);
+    // fprintf(stderr, "[ENC] freq sample size=%zu tiles=%u\n",
+    //         all_diffs_combined.size(), num_tiles);
+    // fflush(stderr);
     
     // Build ONE global frequency table
     RANSEncoder global_rans;
@@ -132,9 +132,9 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
     size_t total_before_tiles = output.size();
     size_t total_input_bytes = 0;
     for (uint32_t tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
-        fprintf(stderr, "[ENC] encoding tile %u/%u size=%zu\n",
-                tile_idx, num_tiles, all_tile_diffs[tile_idx].size());
-        fflush(stderr);
+        // fprintf(stderr, "[ENC] encoding tile %u/%u size=%zu\n",
+        //         tile_idx, num_tiles, all_tile_diffs[tile_idx].size());
+        // fflush(stderr);
         
         // Reset state before encoding each tile
         tile_rans.resetState();
@@ -147,25 +147,25 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
         std::vector<uint8_t> compressed = tile_rans.encodeWithoutFreqTable(
             all_tile_diffs[tile_idx].data(), 
             all_tile_diffs[tile_idx].size());
-        fprintf(stderr, "[ENC] tile %u compressed size=%zu\n",
-                tile_idx, compressed.size());
-        fflush(stderr);
+        // fprintf(stderr, "[ENC] tile %u compressed size=%zu\n",
+        //         tile_idx, compressed.size());
+        // fflush(stderr);
         
         // Write compressed tile data
         output.insert(output.end(), compressed.begin(), compressed.end());
         
         tile_metadata[tile_idx].data_size = output.size() - tile_metadata[tile_idx].data_offset;
         
-        if (tile_idx == 0) {
-            fprintf(stderr, "Tile 0: input=%zu bytes, compressed=%zu bytes (ratio=%.2fx)\n", 
-                    all_tile_diffs[tile_idx].size(), compressed.size(),
-                    (float)all_tile_diffs[tile_idx].size() / compressed.size());
-        }
+        // if (tile_idx == 0) {
+        //     fprintf(stderr, "Tile 0: input=%zu bytes, compressed=%zu bytes (ratio=%.2fx)\n", 
+        //             all_tile_diffs[tile_idx].size(), compressed.size(),
+        //             (float)all_tile_diffs[tile_idx].size() / compressed.size());
+        // }
     }
-    size_t total_tile_data = output.size() - total_before_tiles;
-    fprintf(stderr, "rANS compression: %u tiles, input=%zu bytes, compressed=%zu bytes (ratio=%.2fx)\n",
-            num_tiles, total_input_bytes, total_tile_data, 
-            (float)total_input_bytes / total_tile_data);
+    // size_t total_tile_data = output.size() - total_before_tiles;
+    // fprintf(stderr, "rANS compression: %u tiles, input=%zu bytes, compressed=%zu bytes (ratio=%.2fx)\n",
+    //         num_tiles, total_input_bytes, total_tile_data, 
+    //         (float)total_input_bytes / total_tile_data);
     
     // Copy metadata into output buffer
     memcpy(output.data() + metadata_offset, tile_metadata.data(), num_tiles * sizeof(TileMetadata));

@@ -199,17 +199,20 @@ class CompressedLinear(torch.nn.Module):
     
     def forward(self, x):
         """Forward pass: decompress weights, compute, free"""
-        # Decompress weights
+        # Decompress weights TO THE SAME DEVICE AS INPUT
         start = time.time()
+        self.compressed_weight.device = x.device  # Update target device
         weight = self.compressed_weight.decompress()
         self.decode_time += time.time() - start
         self.decode_count += 1
         
-        # Compute
+        # Compute (now all on same device)
         output = nn.functional.linear(x, weight, self.bias)
         
         # Free decompressed weights immediately
         del weight
+        if x.device.type == 'cuda':
+            torch.cuda.empty_cache()
         
         return output
 
