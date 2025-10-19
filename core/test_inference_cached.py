@@ -99,11 +99,20 @@ class CachedCompressedTensor:
         
         self._cache_misses += 1
         
+        # Progress indicator for large layers
+        num_tiles = len(self.compressed_tiles)
+        if num_tiles > 10:
+            print(f"    Decompressing {num_tiles} tiles...", end='', flush=True)
+        
         # Decompress all tiles
         decoder = self.lib.decoder_create()
         all_data = []
         
-        for compressed in self.compressed_tiles:
+        for tile_idx, compressed in enumerate(self.compressed_tiles):
+            # Progress for very large layers
+            if num_tiles > 50 and tile_idx % 10 == 0:
+                print(f" {tile_idx}/{num_tiles}", end='', flush=True)
+            
             decoded = np.zeros((256, 256), dtype=np.int8)
             decoded_ptr = decoded.ctypes.data_as(ctypes.POINTER(ctypes.c_int8))
             
@@ -114,6 +123,9 @@ class CachedCompressedTensor:
             all_data.append(decoded.flatten())
         
         self.lib.decoder_destroy(decoder)
+        
+        if num_tiles > 10:
+            print(f" done ({num_tiles} tiles)", flush=True)
         
         # Concatenate and trim
         full_data = np.concatenate(all_data)[:self.num_elements]
