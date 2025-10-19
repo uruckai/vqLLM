@@ -56,6 +56,11 @@ public:
      * Get symbol table for decoder
      */
     const RANSSymbol* getSymbolTable() const { return symbols_; }
+    
+    /**
+     * Reset state for encoding a new stream
+     */
+    void resetState() { state_ = RANS_L; }
 
 private:
     uint32_t freqs_[256];      // Raw frequencies

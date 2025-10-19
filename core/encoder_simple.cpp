@@ -135,6 +135,10 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
         fprintf(stderr, "[ENC] encoding tile %u/%u size=%zu\n",
                 tile_idx, num_tiles, all_tile_diffs[tile_idx].size());
         fflush(stderr);
+        
+        // Reset state before encoding each tile
+        tile_rans.resetState();
+        
         tile_metadata[tile_idx].data_offset = output.size();
         
         total_input_bytes += all_tile_diffs[tile_idx].size();
