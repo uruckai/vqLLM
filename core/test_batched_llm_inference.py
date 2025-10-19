@@ -141,7 +141,16 @@ class CompressedLinear(torch.nn.Module):
         self.compressed = compressed_data['compressed']
         self.shape = compressed_data['shape']
         self.scale = compressed_data['scale']
-        self.dtype = compressed_data['dtype']
+        
+        # Convert numpy dtype to torch dtype
+        numpy_dtype = compressed_data['dtype']
+        if numpy_dtype == np.float16:
+            self.torch_dtype = torch.float16
+        elif numpy_dtype == np.float32:
+            self.torch_dtype = torch.float32
+        else:
+            self.torch_dtype = torch.float32  # fallback
+        
         self.decoder = decoder_handle
         
         # Keep bias uncompressed
@@ -159,7 +168,7 @@ class CompressedLinear(torch.nn.Module):
         
         # Dequantize
         weight_fp = torch.from_numpy(decoded_int8.astype(np.float32) * self.scale)
-        weight = weight_fp.to(self.dtype).to(x.device)
+        weight = weight_fp.to(dtype=self.torch_dtype, device=x.device)
         
         # Linear operation
         output = torch.nn.functional.linear(x, weight, self.bias)
