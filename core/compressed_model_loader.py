@@ -32,11 +32,39 @@ def load_codec():
     
     lib = ctypes.CDLL(str(lib_path))
     
-    # Set return types
+    # Set return types AND argument types (critical for 64-bit pointers!)
     lib.encoder_create.restype = ctypes.c_void_p
-    lib.decoder_create.restype = ctypes.c_void_p
-    lib.decoder_is_available.restype = ctypes.c_bool
+    lib.encoder_create.argtypes = [ctypes.c_uint16]
+    
+    lib.encoder_destroy.argtypes = [ctypes.c_void_p]
+    
     lib.encoder_encode.restype = ctypes.c_float
+    lib.encoder_encode.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_int8),
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8)),
+        ctypes.POINTER(ctypes.c_size_t)
+    ]
+    
+    lib.decoder_create.restype = ctypes.c_void_p
+    lib.decoder_create.argtypes = []
+    
+    lib.decoder_destroy.argtypes = [ctypes.c_void_p]
+    
+    lib.decoder_decode.restype = ctypes.c_float
+    lib.decoder_decode.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_int8)
+    ]
+    
+    lib.decoder_is_available.restype = ctypes.c_bool
+    lib.decoder_is_available.argtypes = []
+    
+    lib.free_buffer.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
     
     return lib
 
@@ -84,13 +112,14 @@ class CompressedWeightManager:
             end = min(start + tile_elements, len(flat))
             tile_data = flat[start:end]
             
-            # Pad to tile size
+            # Pad to tile size if needed
             if len(tile_data) < tile_elements:
-                padded = np.zeros(tile_elements, dtype=np.int8)
+                padded = np.zeros(tile_elements, dtype=np.int8, order='C')
                 padded[:len(tile_data)] = tile_data
                 tile_data = padded
             
-            tile_2d = tile_data.reshape(self.tile_size, self.tile_size)
+            # Force contiguous copy (critical for C++ library!)
+            tile_2d = np.ascontiguousarray(tile_data.reshape(self.tile_size, self.tile_size))
             
             # Encode tile
             encoder = self.lib.encoder_create(self.tile_size)
