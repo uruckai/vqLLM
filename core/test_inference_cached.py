@@ -22,23 +22,21 @@ from collections import OrderedDict
 from test_inference_lowmem import load_codec
 
 class CachedCompressedTensor:
-    """CompressedTensor with LRU cache for decompressed data"""
+    """CompressedTensor WITHOUT internal caching (cache managed at layer level)"""
     
-    def __init__(self, codec_lib, tensor, cache_size=50):
+    def __init__(self, codec_lib, tensor, cache_size=0):
         """
         Args:
             codec_lib: Loaded codec library
             tensor: PyTorch tensor to compress
-            cache_size: Number of decompressed tensors to cache (0 = no cache)
+            cache_size: UNUSED (kept for compatibility)
         """
         self.lib = codec_lib
         self.shape = tuple(tensor.shape)
         self.dtype = tensor.dtype
         self.device = tensor.device
-        self.cache_size = cache_size
         
-        # Cached decompressed tensor
-        self._cached = None
+        # No internal caching - managed at layer level
         self._cache_hits = 0
         self._cache_misses = 0
         
@@ -91,12 +89,7 @@ class CachedCompressedTensor:
         self.compression_ratio = self.original_size / self.compressed_size
     
     def decompress(self):
-        """Decompress and return the tensor (with caching)"""
-        # Check cache
-        if self._cached is not None:
-            self._cache_hits += 1
-            return self._cached
-        
+        """Decompress and return the tensor (NO internal caching)"""
         self._cache_misses += 1
         decompress_start = time.time()
         
@@ -105,7 +98,7 @@ class CachedCompressedTensor:
         if num_tiles > 10:
             print(f"    [t+{time.time()-decompress_start:.1f}s] Decompressing {num_tiles} tiles...", end='', flush=True)
         
-        # Decompress all tiles
+        # Decompress all tiles using GPU decoder
         decoder = self.lib.decoder_create()
         all_data = []
         
@@ -114,7 +107,8 @@ class CachedCompressedTensor:
             # Progress for very large layers
             if num_tiles > 50 and tile_idx % 10 == 0:
                 elapsed = time.time() - tile_start
-                print(f" {tile_idx}/{num_tiles}({elapsed:.1f}s)", end='', flush=True)
+                avg_per_tile = elapsed / 10 if tile_idx > 0 else 0
+                print(f" {tile_idx}/{num_tiles}({avg_per_tile*1000:.0f}ms/tile)", end='', flush=True)
                 tile_start = time.time()
             
             decoded = np.zeros((256, 256), dtype=np.int8)
@@ -123,7 +117,11 @@ class CachedCompressedTensor:
             compressed_array = (ctypes.c_uint8 * len(compressed)).from_buffer_copy(compressed)
             compressed_ptr = ctypes.cast(compressed_array, ctypes.POINTER(ctypes.c_uint8))
             
-            self.lib.decoder_decode(decoder, compressed_ptr, len(compressed), decoded_ptr)
+            # GPU decoder returns time in ms
+            decode_time_ms = self.lib.decoder_decode(decoder, compressed_ptr, len(compressed), decoded_ptr)
+            if decode_time_ms < 0:
+                raise RuntimeError(f"GPU decode failed on tile {tile_idx}")
+            
             all_data.append(decoded.flatten())
         
         self.lib.decoder_destroy(decoder)
@@ -146,17 +144,7 @@ class CachedCompressedTensor:
         result = full_data.reshape(self.shape)
         tensor = torch.from_numpy(result).to(self.device)
         
-        # Cache if enabled
-        if self.cache_size > 0:
-            self._cached = tensor
-        
         return tensor
-    
-    def clear_cache(self):
-        """Clear cached decompressed tensor"""
-        self._cached = None
-        if self.device.type == 'cuda':
-            torch.cuda.empty_cache()
     
     def get_stats(self):
         """Return cache statistics"""
@@ -183,8 +171,7 @@ class CachedCompressedLinear(torch.nn.Module):
         self.enable_cache = enable_cache
         self.compressed_weight = CachedCompressedTensor(
             codec_lib, 
-            original_linear.weight.data,
-            cache_size=1 if enable_cache else 0
+            original_linear.weight.data
         )
         
         if original_linear.bias is not None:
@@ -232,11 +219,12 @@ class CachedCompressedLinear(torch.nn.Module):
         self.decode_time += decode_time
         self.decode_count += 1
         
-        # Progress indicator every 100 operations
-        if self.decode_count % 100 == 0:
-            hit_str = "HIT" if cache_hit else "MISS"
+        # Progress indicator every 50 operations
+        if self.decode_count % 50 == 0:
+            hit_str = "HIT " if cache_hit else "MISS"
             cached = len(CachedCompressedLinear._global_cache)
-            print(f"  [Layer {self.decode_count:4d}] {hit_str:4s} decode={decode_time*1000:5.1f}ms cached={cached}/20", flush=True)
+            total_time_per_op = self.decode_time / self.decode_count if self.decode_count > 0 else 0
+            print(f"  [Op {self.decode_count:4d}] {hit_str} time={decode_time*1000:5.0f}ms avg={total_time_per_op*1000:5.0f}ms cache={cached}/{self._max_cache_size}", flush=True)
         
         # Compute
         output = nn.functional.linear(x, weight, self.bias)
