@@ -98,20 +98,24 @@ class CachedCompressedTensor:
             return self._cached
         
         self._cache_misses += 1
+        decompress_start = time.time()
         
         # Progress indicator for large layers
         num_tiles = len(self.compressed_tiles)
         if num_tiles > 10:
-            print(f"    Decompressing {num_tiles} tiles...", end='', flush=True)
+            print(f"    [t+{time.time()-decompress_start:.1f}s] Decompressing {num_tiles} tiles...", end='', flush=True)
         
         # Decompress all tiles
         decoder = self.lib.decoder_create()
         all_data = []
         
+        tile_start = time.time()
         for tile_idx, compressed in enumerate(self.compressed_tiles):
             # Progress for very large layers
             if num_tiles > 50 and tile_idx % 10 == 0:
-                print(f" {tile_idx}/{num_tiles}", end='', flush=True)
+                elapsed = time.time() - tile_start
+                print(f" {tile_idx}/{num_tiles}({elapsed:.1f}s)", end='', flush=True)
+                tile_start = time.time()
             
             decoded = np.zeros((256, 256), dtype=np.int8)
             decoded_ptr = decoded.ctypes.data_as(ctypes.POINTER(ctypes.c_int8))
@@ -124,8 +128,9 @@ class CachedCompressedTensor:
         
         self.lib.decoder_destroy(decoder)
         
+        total_decompress_time = time.time() - decompress_start
         if num_tiles > 10:
-            print(f" done ({num_tiles} tiles)", flush=True)
+            print(f" done in {total_decompress_time:.2f}s ({num_tiles} tiles, {total_decompress_time/num_tiles*1000:.1f}ms/tile)", flush=True)
         
         # Concatenate and trim
         full_data = np.concatenate(all_data)[:self.num_elements]
@@ -410,12 +415,17 @@ def test_cached_inference():
     input_ids = inputs['input_ids']
     attention_mask = inputs.get('attention_mask', None)
     
-    print(f"  Token 0: Starting generation...", flush=True)
+    from datetime import datetime
+    def timestamp():
+        return datetime.now().strftime("%H:%M:%S")
+    
+    print(f"  [{timestamp()}] Token 0: Starting generation...", flush=True)
     
     with torch.no_grad():
         for token_idx in range(5):
             token_start = time.time()
             
+            print(f"  [{timestamp()}]   Forward pass starting...", flush=True)
             # Forward pass
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             next_token_logits = outputs.logits[:, -1, :]
@@ -433,11 +443,11 @@ def test_cached_inference():
             # Get current cache stats
             cache_stats = CachedCompressedLinear.get_cache_stats()
             
-            print(f"  Token {token_idx+1}: '{token_text}' ({token_time:.1f}s, total {elapsed:.1f}s, cache={cache_stats['cached_layers']}/20)", flush=True)
+            print(f"  [{timestamp()}] Token {token_idx+1}: '{token_text}' (took {token_time:.1f}s, total {elapsed:.1f}s, cache={cache_stats['cached_layers']}/20)", flush=True)
             
             # Stop if EOS
             if next_token[0, 0] == tokenizer.eos_token_id:
-                print(f"  [EOS token reached]", flush=True)
+                print(f"  [{timestamp()}] [EOS token reached]", flush=True)
                 break
     
     cached_output = input_ids
