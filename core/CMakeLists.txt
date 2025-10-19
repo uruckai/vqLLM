@@ -11,12 +11,16 @@ find_package(CUDAToolkit REQUIRED)
 set(SOURCES
     encoder_simple.cpp
     decoder_host.cpp
+    encoder_batched.cpp
+    decoder_batched.cpp
     rans.cpp
     c_api.cpp
+    c_api_batched.cpp
 )
 
 set(CUDA_SOURCES
     decoder_gpu.cu
+    decoder_batched.cu
 )
 
 # Build shared library

@@ -63,15 +63,8 @@ void RANSEncoder::normalizeFrequencies() {
         
         int32_t diff = static_cast<int32_t>(RANS_SCALE) - static_cast<int32_t>(sum);
         int32_t new_freq = static_cast<int32_t>(scaled_freqs[max_idx]) + diff;
-
-        // Debug output for problematic cases
-        if (new_freq <= 0) {
-            fprintf(stderr, "WARNING: new_freq <= 0: %d, diff=%d, old_freq=%u\n", new_freq, diff, scaled_freqs[max_idx]);
-        }
-
-        // Ensure frequency is valid
-        uint32_t clamped_freq = std::max(1u, std::min(static_cast<uint32_t>(std::abs(new_freq)), RANS_SCALE - 255u));
-        scaled_freqs[max_idx] = clamped_freq;
+        // Ensure frequency is at least 1 and doesn't overflow
+        scaled_freqs[max_idx] = std::max(1u, std::min(static_cast<uint32_t>(new_freq), RANS_SCALE - 255u));
     }
     
     // Build cumulative frequency table
@@ -92,34 +85,20 @@ void RANSEncoder::renormalize(std::vector<uint8_t>& output) {
 
 void RANSEncoder::put(uint8_t symbol, std::vector<uint8_t>& output) {
     const RANSSymbol& s = symbols_[symbol];
-
+    
     // Safety check: frequency must be at least 1
     if (s.freq == 0) {
         fprintf(stderr, "ERROR: Symbol %d has zero frequency!\n", symbol);
         return; // Skip encoding this symbol
     }
-
-    // Prevent potential infinite loop in renormalization
-    int renormalize_count = 0;
+    
+    // Renormalize if needed
     uint32_t max_state = ((RANS_L >> RANS_SCALE_BITS) << 8) * s.freq;
-
-    while (state_ >= max_state && renormalize_count < 100) {  // Limit renormalization
+    while (state_ >= max_state) {
         output.push_back(state_ & 0xFF);
         state_ >>= 8;
-        renormalize_count++;
     }
-
-    if (renormalize_count >= 100) {
-        fprintf(stderr, "ERROR: Too many renormalizations for symbol %d\n", symbol);
-        return;
-    }
-
-    // Check for potential overflow
-    if (state_ / s.freq > UINT32_MAX >> RANS_SCALE_BITS) {
-        fprintf(stderr, "ERROR: Potential overflow in state calculation for symbol %d\n", symbol);
-        return;
-    }
-
+    
     // Encode symbol
     state_ = ((state_ / s.freq) << RANS_SCALE_BITS) + (state_ % s.freq) + s.start;
 }
@@ -161,9 +140,7 @@ std::vector<uint8_t> RANSEncoder::encode(const uint8_t* data, size_t size) {
     return output;
 }
 
-std::vector<uint8_t> RANSEncoder::encodeWithoutFreqTable(const uint8_t* data, size_t size) {
-    std::vector<uint8_t> output;
-    
+void RANSEncoder::encodeWithoutFreqTable(const uint8_t* data, size_t size, std::vector<uint8_t>& output) {
     // Write size header (4 bytes)
     output.push_back((size >> 0) & 0xFF);
     output.push_back((size >> 8) & 0xFF);
@@ -182,8 +159,11 @@ std::vector<uint8_t> RANSEncoder::encodeWithoutFreqTable(const uint8_t* data, si
     
     // Flush final state
     flush(output);
-    
-    return output;
+}
+
+void RANSEncoder::copyFrequencies(const RANSEncoder& other) {
+    memcpy(freqs_, other.freqs_, sizeof(freqs_));
+    memcpy(symbols_, other.symbols_, sizeof(symbols_));
 }
 
 // ============================================================================

@@ -1,0 +1,2092 @@
+remote: Enumerating objects: 29, done.
+remote: Counting objects: 100% (29/29), done.
+remote: Compressing objects: 100% (16/16), done.
+remote: Total 24 (delta 12), reused 20 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (24/24), 26.30 KiB | 117.00 KiB/s, done.
+From https://github.com/uruckai/vqLLM
+   849c0b7..3bbf65d  main       -> origin/main
+Updating 849c0b7..3bbf65d
+Fast-forward
+ core/GPU_OPTIMIZATION_ROADMAP.md | 289 ++++++++++++++++++++++++
+ core/LOWMEM_INFERENCE_READY.md   | 414 +++++++++++++++++++++++++++++++++++
+ core/MILESTONE_CODEC_COMPLETE.md | 257 ++++++++++++++++++++++
+ core/PROJECT_STATUS_OCT_2024.md  | 366 +++++++++++++++++++++++++++++++
+ core/README.md                   |  89 +++++---
+ core/RUN_LOWMEM_TEST.md          | 210 ++++++++++++++++++
+ core/compressed_model_loader.py  |  39 +++-
+ core/test_inference_lowmem.py    |  39 +++-
+ core/test_lowmem_simple.py       | 199 +++++++++++++++++
+ 9 files changed, 1859 insertions(+), 43 deletions(-)
+ create mode 100644 core/GPU_OPTIMIZATION_ROADMAP.md
+ create mode 100644 core/LOWMEM_INFERENCE_READY.md
+ create mode 100644 core/MILESTONE_CODEC_COMPLETE.md
+ create mode 100644 core/PROJECT_STATUS_OCT_2024.md
+ create mode 100644 core/RUN_LOWMEM_TEST.md
+ create mode 100644 core/test_lowmem_simple.py
+==============================================
+Building Core Codec
+==============================================
+? CUDA found: 12.8,
+
+Configuring...
+-- Codec Core Configuration:
+--   CUDA Version: 12.8.93
+--   CUDA Architectures: 80;86;89;90
+-- Configuring done (0.1s)
+-- Generating done (0.1s)
+-- Build files have been written to: /workspace/CodecLLM/core/build
+
+Building...
+[100%] Built target codec_core
+
+==============================================
+? Build successful!
+-rwxrwxrwx 1 root root 219K Oct 19 20:00 libcodec_core.so
+
+Next steps:
+  cd ..
+  python3 test_core.py
+==============================================
+
+================================================================================
+SIMPLE LOW-MEMORY INFERENCE TESTS
+================================================================================
+
+This tests the basic building blocks for low-memory inference:
+1. CompressedTensor: Compress/decompress individual tensors
+2. CompressedLinear: Replace nn.Linear with on-demand decompression
+
+================================================================================
+TEST 1: CompressedTensor Compression/Decompression
+================================================================================
+
+[1/4] Loading codec...
+? Codec loaded
+
+[2/4] Creating test tensor...
+  Shape: torch.Size([2048, 2048])
+  Dtype: torch.float16
+  Size: 8.00 MB
+
+[3/4] Compressing tensor...
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=165 78 163 128
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64783
+Tile 0: input=65536 bytes, compressed=64783 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64783 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=123 161 144 32
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65488
+Tile 0: input=65536 bytes, compressed=65488 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65488 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=177 52 137 178
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64777
+Tile 0: input=65536 bytes, compressed=64777 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64777 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=123 123 138 180
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65472
+Tile 0: input=65536 bytes, compressed=65472 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65472 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=132 114 165 146
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64767
+Tile 0: input=65536 bytes, compressed=64767 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64767 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=139 131 122 47
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65487
+Tile 0: input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=160 73 179 109
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65484
+Tile 0: input=65536 bytes, compressed=65484 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65484 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=149 122 127 67
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64807
+Tile 0: input=65536 bytes, compressed=64807 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64807 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=125 160 82 123
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65508
+Tile 0: input=65536 bytes, compressed=65508 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65508 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=178 73 123 198
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64761
+Tile 0: input=65536 bytes, compressed=64761 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64761 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=135 143 89 94
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64731
+Tile 0: input=65536 bytes, compressed=64731 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64731 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=84 161 72 212
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64729
+Tile 0: input=65536 bytes, compressed=64729 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64729 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=98 200 92 95
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65487
+Tile 0: input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=108 155 88 0
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65487
+Tile 0: input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=136 108 64 26
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65490
+Tile 0: input=65536 bytes, compressed=65490 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65490 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=167 98 153 73
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64779
+Tile 0: input=65536 bytes, compressed=64779 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64779 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=131 120 90 190
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65475
+Tile 0: input=65536 bytes, compressed=65475 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65475 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=173 26 94 99
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65473
+Tile 0: input=65536 bytes, compressed=65473 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65473 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=146 109 166 239
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65470
+Tile 0: input=65536 bytes, compressed=65470 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65470 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=159 104 89 139
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65495
+Tile 0: input=65536 bytes, compressed=65495 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65495 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=92 175 206 43
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64739
+Tile 0: input=65536 bytes, compressed=64739 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64739 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=171 112 116 179
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64722
+Tile 0: input=65536 bytes, compressed=64722 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64722 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=137 170 92 133
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64783
+Tile 0: input=65536 bytes, compressed=64783 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64783 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=126 96 124 157
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64758
+Tile 0: input=65536 bytes, compressed=64758 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64758 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=139 100 198 62
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65487
+Tile 0: input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65487 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=142 86 124 221
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65497
+Tile 0: input=65536 bytes, compressed=65497 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65497 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=213 170 95 10
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65496
+Tile 0: input=65536 bytes, compressed=65496 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65496 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=162 102 98 188
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64728
+Tile 0: input=65536 bytes, compressed=64728 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64728 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=104 199 63 163
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65499
+Tile 0: input=65536 bytes, compressed=65499 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65499 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=103 145 116 171
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64762
+Tile 0: input=65536 bytes, compressed=64762 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64762 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=111 124 171 111
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64747
+Tile 0: input=65536 bytes, compressed=64747 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64747 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=110 164 47 242
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64782
+Tile 0: input=65536 bytes, compressed=64782 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64782 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=91 255 242 173
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65461
+Tile 0: input=65536 bytes, compressed=65461 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65461 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=123 150 153 224
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65500
+Tile 0: input=65536 bytes, compressed=65500 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65500 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=133 91 221 45
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65466
+Tile 0: input=65536 bytes, compressed=65466 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65466 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=93 141 164 186
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64795
+Tile 0: input=65536 bytes, compressed=64795 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64795 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=157 63 141 160
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64757
+Tile 0: input=65536 bytes, compressed=64757 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64757 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=143 95 99 182
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64715
+Tile 0: input=65536 bytes, compressed=64715 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64715 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=94 191 104 92
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64759
+Tile 0: input=65536 bytes, compressed=64759 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64759 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=27 74 45 58
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65493
+Tile 0: input=65536 bytes, compressed=65493 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65493 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=112 176 70 135
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65494
+Tile 0: input=65536 bytes, compressed=65494 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65494 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=162 124 165 111
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64714
+Tile 0: input=65536 bytes, compressed=64714 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64714 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=110 173 86 168
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65475
+Tile 0: input=65536 bytes, compressed=65475 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65475 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=153 69 163 146
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65502
+Tile 0: input=65536 bytes, compressed=65502 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65502 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=126 133 122 134
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65470
+Tile 0: input=65536 bytes, compressed=65470 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65470 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=95 155 120 95
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64747
+Tile 0: input=65536 bytes, compressed=64747 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64747 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=141 114 125 158
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65476
+Tile 0: input=65536 bytes, compressed=65476 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65476 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=87 255 3 152
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65458
+Tile 0: input=65536 bytes, compressed=65458 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65458 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=121 186 32 195
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65482
+Tile 0: input=65536 bytes, compressed=65482 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65482 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=71 9 21 174
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65476
+Tile 0: input=65536 bytes, compressed=65476 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65476 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=119 172 117 42
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65457
+Tile 0: input=65536 bytes, compressed=65457 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65457 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=145 71 2 181
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65441
+Tile 0: input=65536 bytes, compressed=65441 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65441 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=144 37 9 52
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65481
+Tile 0: input=65536 bytes, compressed=65481 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65481 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=72 178 112 148
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64748
+Tile 0: input=65536 bytes, compressed=64748 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64748 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=99 194 58 145
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64756
+Tile 0: input=65536 bytes, compressed=64756 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64756 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=112 223 240 222
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65462
+Tile 0: input=65536 bytes, compressed=65462 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65462 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=160 102 127 100
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64793
+Tile 0: input=65536 bytes, compressed=64793 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64793 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=135 86 187 143
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64771
+Tile 0: input=65536 bytes, compressed=64771 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64771 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=168 78 64 255
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64764
+Tile 0: input=65536 bytes, compressed=64764 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64764 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=227 24 170 26
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64865
+Tile 0: input=65536 bytes, compressed=64865 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64865 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=93 185 161 17
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65421
+Tile 0: input=65536 bytes, compressed=65421 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65421 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=66 199 143 134
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64778
+Tile 0: input=65536 bytes, compressed=64778 bytes (ratio=1.01x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64778 bytes (ratio=1.01x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=148 102 138 121
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65497
+Tile 0: input=65536 bytes, compressed=65497 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65497 bytes (ratio=1.00x)
+[C_API] encoder_create tile=256 -> 0x3c291b60
+[C_API] encoder_encode called enc=0x3c291b60 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=181 11 152 11
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=65500
+Tile 0: input=65536 bytes, compressed=65500 bytes (ratio=1.00x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=65500 bytes (ratio=1.00x)
+  Original size: 8.00 MB
+  Compressed size: 4.07 MB
+  Compression ratio: 1.96x
+  Space saved: 49.1%
+
+[4/4] Decompressing tensor...
+  Decompressed shape: torch.Size([2048, 2048])
+  Decompressed dtype: torch.int8
+  Max error: 123.125000
+  Mean error: 25.125000
+??  Reconstruction error higher than expected
+
+================================================================================
+TEST 2: CompressedLinear Layer
+================================================================================
+
+[1/5] Loading codec...
+? Codec loaded
+
+[2/5] Creating test linear layer...
+  Input features: 2048
+  Output features: 2048
+
+[3/5] Compressing layer...
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=136 118 143 87
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64424
+Tile 0: input=65536 bytes, compressed=64424 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64424 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=112 173 94 63
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64414
+Tile 0: input=65536 bytes, compressed=64414 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64414 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=111 154 145 65
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64427
+Tile 0: input=65536 bytes, compressed=64427 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64427 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=148 104 133 141
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64464
+Tile 0: input=65536 bytes, compressed=64464 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64464 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=130 139 120 112
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64418
+Tile 0: input=65536 bytes, compressed=64418 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64418 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 132 119 107
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62879
+Tile 0: input=65536 bytes, compressed=62879 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62879 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=132 116 110 213
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64479
+Tile 0: input=65536 bytes, compressed=64479 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64479 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=155 97 129 124
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62760
+Tile 0: input=65536 bytes, compressed=62760 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62760 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=112 157 126 112
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64442
+Tile 0: input=65536 bytes, compressed=64442 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64442 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=90 210 76 147
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64402
+Tile 0: input=65536 bytes, compressed=64402 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64402 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=126 108 114 147
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62946
+Tile 0: input=65536 bytes, compressed=62946 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62946 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=136 82 199 36
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62808
+Tile 0: input=65536 bytes, compressed=62808 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62808 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=137 125 97 145
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64453
+Tile 0: input=65536 bytes, compressed=64453 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64453 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=154 42 165 196
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64392
+Tile 0: input=65536 bytes, compressed=64392 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64392 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=148 111 154 112
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62984
+Tile 0: input=65536 bytes, compressed=62984 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62984 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=118 124 204 248
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64443
+Tile 0: input=65536 bytes, compressed=64443 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64443 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=143 108 138 83
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62935
+Tile 0: input=65536 bytes, compressed=62935 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62935 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=130 130 123 157
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64478
+Tile 0: input=65536 bytes, compressed=64478 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64478 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=101 186 102 140
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64475
+Tile 0: input=65536 bytes, compressed=64475 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64475 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=123 112 164 154
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62869
+Tile 0: input=65536 bytes, compressed=62869 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62869 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=123 179 53 144
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64447
+Tile 0: input=65536 bytes, compressed=64447 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64447 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=119 140 147 107
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62819
+Tile 0: input=65536 bytes, compressed=62819 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62819 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=106 211 21 212
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64435
+Tile 0: input=65536 bytes, compressed=64435 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64435 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=164 107 91 128
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62836
+Tile 0: input=65536 bytes, compressed=62836 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62836 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=147 55 242 30
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64454
+Tile 0: input=65536 bytes, compressed=64454 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64454 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=137 116 82 222
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64430
+Tile 0: input=65536 bytes, compressed=64430 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64430 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=69 2 42 209
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64426
+Tile 0: input=65536 bytes, compressed=64426 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64426 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=112 149 98 192
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64480
+Tile 0: input=65536 bytes, compressed=64480 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64480 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=157 45 218 83
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64457
+Tile 0: input=65536 bytes, compressed=64457 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64457 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=124 115 154 123
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64446
+Tile 0: input=65536 bytes, compressed=64446 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64446 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=97 204 46 142
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64454
+Tile 0: input=65536 bytes, compressed=64454 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64454 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=118 128 190 86
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62856
+Tile 0: input=65536 bytes, compressed=62856 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62856 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=114 173 80 103
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64449
+Tile 0: input=65536 bytes, compressed=64449 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64449 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=130 100 196 68
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64417
+Tile 0: input=65536 bytes, compressed=64417 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64417 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=125 135 98 205
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62937
+Tile 0: input=65536 bytes, compressed=62937 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62937 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=121 122 142 144
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62859
+Tile 0: input=65536 bytes, compressed=62859 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62859 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=189 117 104 128
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62955
+Tile 0: input=65536 bytes, compressed=62955 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62955 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=108 204 40 194
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64473
+Tile 0: input=65536 bytes, compressed=64473 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64473 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=100 205 30 192
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64445
+Tile 0: input=65536 bytes, compressed=64445 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64445 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=173 22 205 110
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64463
+Tile 0: input=65536 bytes, compressed=64463 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64463 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=107 143 209 249
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64395
+Tile 0: input=65536 bytes, compressed=64395 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64395 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=149 50 194 144
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64443
+Tile 0: input=65536 bytes, compressed=64443 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64443 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=122 100 177 139
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64442
+Tile 0: input=65536 bytes, compressed=64442 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64442 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=141 111 129 88
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64458
+Tile 0: input=65536 bytes, compressed=64458 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64458 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=140 131 52 221
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64420
+Tile 0: input=65536 bytes, compressed=64420 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64420 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=120 94 177 165
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62920
+Tile 0: input=65536 bytes, compressed=62920 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62920 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=95 96 224 70
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62829
+Tile 0: input=65536 bytes, compressed=62829 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62829 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=136 145 102 135
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62842
+Tile 0: input=65536 bytes, compressed=62842 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62842 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=119 159 103 172
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62900
+Tile 0: input=65536 bytes, compressed=62900 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62900 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=104 161 166 83
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64440
+Tile 0: input=65536 bytes, compressed=64440 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64440 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=149 96 139 125
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64449
+Tile 0: input=65536 bytes, compressed=64449 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64449 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=157 45 237 77
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64498
+Tile 0: input=65536 bytes, compressed=64498 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64498 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=137 130 110 167
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62842
+Tile 0: input=65536 bytes, compressed=62842 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62842 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=176 46 168 142
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62844
+Tile 0: input=65536 bytes, compressed=62844 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62844 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=142 79 205 67
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64438
+Tile 0: input=65536 bytes, compressed=64438 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64438 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=124 138 132 87
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62917
+Tile 0: input=65536 bytes, compressed=62917 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62917 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=149 20 62 249
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64475
+Tile 0: input=65536 bytes, compressed=64475 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64475 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=120 188 3 189
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64460
+Tile 0: input=65536 bytes, compressed=64460 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64460 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=123 123 128 125
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62827
+Tile 0: input=65536 bytes, compressed=62827 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62827 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=147 120 87 152
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64436
+Tile 0: input=65536 bytes, compressed=64436 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64436 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=125 122 125 172
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64469
+Tile 0: input=65536 bytes, compressed=64469 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64469 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=133 126 122 156
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62952
+Tile 0: input=65536 bytes, compressed=62952 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62952 bytes (ratio=1.04x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=183 52 139 126
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=64455
+Tile 0: input=65536 bytes, compressed=64455 bytes (ratio=1.02x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=64455 bytes (ratio=1.02x)
+[C_API] encoder_create tile=256 -> 0x424312d0
+[C_API] encoder_encode called enc=0x424312d0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=165 119 48 183
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=62795
+Tile 0: input=65536 bytes, compressed=62795 bytes (ratio=1.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=62795 bytes (ratio=1.04x)
+  Compression ratio: 4.01x
+
+[4/5] Testing forward pass...
+? Forward pass failed: self and mat2 must have the same dtype, but got Float and Char
+Traceback (most recent call last):
+  File "/workspace/CodecLLM/core/test_lowmem_simple.py", line 139, in test_compressed_linear
+    compressed_output = compressed_layer.forward(test_input)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 205, in forward
+    output = F.linear(x, weight, self.bias)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: self and mat2 must have the same dtype, but got Float and Char
+
+================================================================================
+SUMMARY
+================================================================================
+Test 1 (CompressedTensor): ? FAIL
+Test 2 (CompressedLinear):  ? FAIL
+
+? SOME TESTS FAILED
+================================================================================
+LOW-MEMORY INFERENCE TEST
+================================================================================
+
+This test demonstrates VRAM-efficient inference by keeping weights
+COMPRESSED and decompressing only the current layer during forward pass.
+
+[1/5] Loading codec library...
+GPU: NVIDIA GeForce RTX 5090
+? Codec library loaded
+? GPU decoder available
+
+[2/5] Loading PyTorch and Transformers...
+? Libraries loaded
+
+[3/5] Loading model...
+  Model: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  (Using TinyLlama for faster testing - same technique works for larger models)
+`torch_dtype` is deprecated! Use `dtype` instead!
+tokenizer_config.json: 1.29kB [00:00, 7.28MB/s]
+tokenizer.model: 100%|????????????????????| 500k/500k [00:00<00:00, 586kB/s]
+tokenizer.json: 1.84MB [00:00, 23.0MB/s]
+special_tokens_map.json: 100%|?????????????| 551/551 [00:00<00:00, 2.42MB/s]
+? Model loaded: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+
+[4/5] Running baseline inference (uncompressed)...
+  Prompt: 'The capital of France is'
+  Generated: 'The capital of France is Paris.
+
+2. B. The capital of Germany is Berlin.
+
+3. C'
+  Peak VRAM: 2.06 GB
+
+[5/5] Compressing model and running low-memory inference...
+  Compressing all Linear layers...
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 127 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=20899
+Tile 0: input=65536 bytes, compressed=20899 bytes (ratio=3.14x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=20899 bytes (ratio=3.14x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 130 124
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=20253
+Tile 0: input=65536 bytes, compressed=20253 bytes (ratio=3.24x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=20253 bytes (ratio=3.24x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 124 131
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=21148
+Tile 0: input=65536 bytes, compressed=21148 bytes (ratio=3.10x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=21148 bytes (ratio=3.10x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 124 133
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=21392
+Tile 0: input=65536 bytes, compressed=21392 bytes (ratio=3.06x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=21392 bytes (ratio=3.06x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 127 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=18822
+Tile 0: input=65536 bytes, compressed=18822 bytes (ratio=3.48x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=18822 bytes (ratio=3.48x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 126 133
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=18606
+Tile 0: input=65536 bytes, compressed=18606 bytes (ratio=3.52x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=18606 bytes (ratio=3.52x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 128 128
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=23778
+Tile 0: input=65536 bytes, compressed=23778 bytes (ratio=2.76x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=23778 bytes (ratio=2.76x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 127 131
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22574
+Tile 0: input=65536 bytes, compressed=22574 bytes (ratio=2.90x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22574 bytes (ratio=2.90x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 132 124
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=19272
+Tile 0: input=65536 bytes, compressed=19272 bytes (ratio=3.40x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=19272 bytes (ratio=3.40x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 129 126
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=19162
+Tile 0: input=65536 bytes, compressed=19162 bytes (ratio=3.42x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=19162 bytes (ratio=3.42x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 126 132 125
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=20893
+Tile 0: input=65536 bytes, compressed=20893 bytes (ratio=3.14x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=20893 bytes (ratio=3.14x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 132 121
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=20543
+Tile 0: input=65536 bytes, compressed=20543 bytes (ratio=3.19x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=20543 bytes (ratio=3.19x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 131 134 107
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=20829
+Tile 0: input=65536 bytes, compressed=20829 bytes (ratio=3.15x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=20829 bytes (ratio=3.15x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 128 126
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=19592
+Tile 0: input=65536 bytes, compressed=19592 bytes (ratio=3.35x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=19592 bytes (ratio=3.35x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 128 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=21423
+Tile 0: input=65536 bytes, compressed=21423 bytes (ratio=3.06x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=21423 bytes (ratio=3.06x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 127 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=21559
+Tile 0: input=65536 bytes, compressed=21559 bytes (ratio=3.04x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=21559 bytes (ratio=3.04x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 128 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22319
+Tile 0: input=65536 bytes, compressed=22319 bytes (ratio=2.94x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22319 bytes (ratio=2.94x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 128 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=24051
+Tile 0: input=65536 bytes, compressed=24051 bytes (ratio=2.72x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=24051 bytes (ratio=2.72x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 121 144
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=25122
+Tile 0: input=65536 bytes, compressed=25122 bytes (ratio=2.61x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=25122 bytes (ratio=2.61x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 136 114
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=24708
+Tile 0: input=65536 bytes, compressed=24708 bytes (ratio=2.65x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=24708 bytes (ratio=2.65x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 126 135
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=25696
+Tile 0: input=65536 bytes, compressed=25696 bytes (ratio=2.55x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=25696 bytes (ratio=2.55x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 129 130
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=25303
+Tile 0: input=65536 bytes, compressed=25303 bytes (ratio=2.59x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=25303 bytes (ratio=2.59x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 128 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22148
+Tile 0: input=65536 bytes, compressed=22148 bytes (ratio=2.96x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22148 bytes (ratio=2.96x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 126 132
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22070
+Tile 0: input=65536 bytes, compressed=22070 bytes (ratio=2.97x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22070 bytes (ratio=2.97x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 130 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22941
+Tile 0: input=65536 bytes, compressed=22941 bytes (ratio=2.86x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22941 bytes (ratio=2.86x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 130 122
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22739
+Tile 0: input=65536 bytes, compressed=22739 bytes (ratio=2.88x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22739 bytes (ratio=2.88x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 128 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=26202
+Tile 0: input=65536 bytes, compressed=26202 bytes (ratio=2.50x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=26202 bytes (ratio=2.50x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 128 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=26162
+Tile 0: input=65536 bytes, compressed=26162 bytes (ratio=2.51x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=26162 bytes (ratio=2.51x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 126 131
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=21211
+Tile 0: input=65536 bytes, compressed=21211 bytes (ratio=3.09x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=21211 bytes (ratio=3.09x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 131 121
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22130
+Tile 0: input=65536 bytes, compressed=22130 bytes (ratio=2.96x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22130 bytes (ratio=2.96x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 131 125
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=21899
+Tile 0: input=65536 bytes, compressed=21899 bytes (ratio=2.99x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=21899 bytes (ratio=2.99x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 125 131
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=22029
+Tile 0: input=65536 bytes, compressed=22029 bytes (ratio=2.97x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=22029 bytes (ratio=2.97x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 124 134
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=34615
+Tile 0: input=65536 bytes, compressed=34615 bytes (ratio=1.89x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=34615 bytes (ratio=1.89x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=131 121 135 120
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=34697
+Tile 0: input=65536 bytes, compressed=34697 bytes (ratio=1.89x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=34697 bytes (ratio=1.89x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 131 127 126
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=35501
+Tile 0: input=65536 bytes, compressed=35501 bytes (ratio=1.85x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=35501 bytes (ratio=1.85x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=130 123 132 122
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=35698
+Tile 0: input=65536 bytes, compressed=35698 bytes (ratio=1.84x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=35698 bytes (ratio=1.84x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 130 123 139
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=31286
+Tile 0: input=65536 bytes, compressed=31286 bytes (ratio=2.09x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=31286 bytes (ratio=2.09x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 130 127 135
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=31037
+Tile 0: input=65536 bytes, compressed=31037 bytes (ratio=2.11x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=31037 bytes (ratio=2.11x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 130 129 123
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=31616
+Tile 0: input=65536 bytes, compressed=31616 bytes (ratio=2.07x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=31616 bytes (ratio=2.07x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 127 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=31712
+Tile 0: input=65536 bytes, compressed=31712 bytes (ratio=2.07x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=31712 bytes (ratio=2.07x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 128 128 133
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=36050
+Tile 0: input=65536 bytes, compressed=36050 bytes (ratio=1.82x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=36050 bytes (ratio=1.82x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 126 135 119
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=36362
+Tile 0: input=65536 bytes, compressed=36362 bytes (ratio=1.80x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=36362 bytes (ratio=1.80x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 127 130
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=33651
+Tile 0: input=65536 bytes, compressed=33651 bytes (ratio=1.95x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=33651 bytes (ratio=1.95x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=129 126 130 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=33479
+Tile 0: input=65536 bytes, compressed=33479 bytes (ratio=1.96x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=33479 bytes (ratio=1.96x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 125 142 106
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=39185
+Tile 0: input=65536 bytes, compressed=39185 bytes (ratio=1.67x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=39185 bytes (ratio=1.67x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=126 131 127 126
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=39387
+Tile 0: input=65536 bytes, compressed=39387 bytes (ratio=1.66x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=39387 bytes (ratio=1.66x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=129 124 127 143
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=35792
+Tile 0: input=65536 bytes, compressed=35792 bytes (ratio=1.83x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=35792 bytes (ratio=1.83x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=126 126 129 131
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=33648
+Tile 0: input=65536 bytes, compressed=33648 bytes (ratio=1.95x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=33648 bytes (ratio=1.95x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 133 117
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28379
+Tile 0: input=65536 bytes, compressed=28379 bytes (ratio=2.31x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28379 bytes (ratio=2.31x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 130 124 131
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=27981
+Tile 0: input=65536 bytes, compressed=27981 bytes (ratio=2.34x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=27981 bytes (ratio=2.34x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 126 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=26566
+Tile 0: input=65536 bytes, compressed=26566 bytes (ratio=2.47x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=26566 bytes (ratio=2.47x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 129 122
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28427
+Tile 0: input=65536 bytes, compressed=28427 bytes (ratio=2.31x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28427 bytes (ratio=2.31x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 124 136
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=26972
+Tile 0: input=65536 bytes, compressed=26972 bytes (ratio=2.43x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=26972 bytes (ratio=2.43x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 131 125
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=26405
+Tile 0: input=65536 bytes, compressed=26405 bytes (ratio=2.48x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=26405 bytes (ratio=2.48x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=129 126 125 134
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=27930
+Tile 0: input=65536 bytes, compressed=27930 bytes (ratio=2.35x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=27930 bytes (ratio=2.35x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=127 130 122 135
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=27662
+Tile 0: input=65536 bytes, compressed=27662 bytes (ratio=2.37x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=27662 bytes (ratio=2.37x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 127 129
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=26476
+Tile 0: input=65536 bytes, compressed=26476 bytes (ratio=2.48x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=26476 bytes (ratio=2.48x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 126 134
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28318
+Tile 0: input=65536 bytes, compressed=28318 bytes (ratio=2.31x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28318 bytes (ratio=2.31x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 130 128
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28282
+Tile 0: input=65536 bytes, compressed=28282 bytes (ratio=2.32x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28282 bytes (ratio=2.32x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 128 136
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28033
+Tile 0: input=65536 bytes, compressed=28033 bytes (ratio=2.34x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28033 bytes (ratio=2.34x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 128 123 138
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28230
+Tile 0: input=65536 bytes, compressed=28230 bytes (ratio=2.32x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28230 bytes (ratio=2.32x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 129 123 137
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=27849
+Tile 0: input=65536 bytes, compressed=27849 bytes (ratio=2.35x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=27849 bytes (ratio=2.35x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=129 126 129 127
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28509
+Tile 0: input=65536 bytes, compressed=28509 bytes (ratio=2.30x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28509 bytes (ratio=2.30x)
+[C_API] encoder_create tile=256 -> 0x5f7d21c0
+[C_API] encoder_encode called enc=0x5f7d21c0 rows=256 cols=256
+[C_API] calling enc->encode
+[ENC] start encode rows=256 cols=256 tile=256
+[ENC] tile0 size=65536 diff_data[0..3]=128 127 133 120
+[ENC] freq sample size=65536 tiles=1
+[ENC] encoding tile 0/1 size=65536
+[ENC] tile 0 compressed size=28108
+Tile 0: input=65536 bytes, compressed=28108 bytes (ratio=2.33x)
+rANS compression: 1 tiles, input=65536 bytes, compressed=28108 bytes (ratio=2.33x)
+Traceback (most recent call last):
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 430, in <module>
+    success = test_low_memory_inference()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 355, in test_low_memory_inference
+    num_compressed = compress_model_weights(model, lib)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 241, in compress_model_weights
+    compress_layer(model)
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 239, in compress_layer
+    compress_layer(child, full_name)
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 239, in compress_layer
+    compress_layer(child, full_name)
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 239, in compress_layer
+    compress_layer(child, full_name)
+  [Previous line repeated 1 more time]
+  File "/workspace/CodecLLM/core/test_inference_lowmem.py", line 229, in compress_layer
+    setattr(module, child_name, compressed)
+  File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 2015, in __setattr__
+    raise TypeError(
+TypeError: cannot assign '__main__.CompressedLinear' as child module 'q_proj' (torch.nn.Module or None expected)

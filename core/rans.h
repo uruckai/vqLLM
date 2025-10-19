@@ -48,14 +48,19 @@ public:
     
     /**
      * Encode data WITHOUT frequency table (for use with global freq table)
-     * @return Compressed data (size header + encoded data + state, NO freq table)
+     * @param output Output vector to append to
      */
-    std::vector<uint8_t> encodeWithoutFreqTable(const uint8_t* data, size_t size);
+    void encodeWithoutFreqTable(const uint8_t* data, size_t size, std::vector<uint8_t>& output);
     
     /**
      * Get symbol table for decoder
      */
     const RANSSymbol* getSymbolTable() const { return symbols_; }
+    
+    /**
+     * Copy frequencies from another encoder (for sharing global freq table)
+     */
+    void copyFrequencies(const RANSEncoder& other);
     
     /**
      * Reset state for encoding a new stream
