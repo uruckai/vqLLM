@@ -4,6 +4,7 @@
  */
 
 #include "format_batched.h"
+#include "rans.h"  // For RANSSymbol definition
 #include <cuda_runtime.h>
 #include <cstdio>
 
@@ -63,7 +64,7 @@ __global__ void decodeTilesBatched(
         // Find symbol by binary search on cumulative frequency
         uint32_t cumul = state & ((1 << 12) - 1);  // RANS_SCALE_BITS = 12
         
-        // Binary search
+        // Binary search (using rans.h RANSSymbol with start/freq fields)
         uint32_t sym = 0;
         for (int bit = 7; bit >= 0; --bit) {
             uint32_t test_sym = sym | (1 << bit);
@@ -72,7 +73,7 @@ __global__ void decodeTilesBatched(
             }
         }
         
-        // Decode symbol
+        // Decode symbol (RANSSymbol from rans.h has start and freq)
         const RANSSymbol& s = d_rans_table[sym];
         state = s.freq * (state >> 12) + (cumul - s.start);
         

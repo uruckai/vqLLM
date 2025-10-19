@@ -144,9 +144,11 @@ float Encoder::encode(const int8_t* data, uint32_t rows, uint32_t cols,
         total_input_bytes += all_tile_diffs[tile_idx].size();
         
         // Encode with rANS (WITHOUT frequency table - it's global)
-        std::vector<uint8_t> compressed = tile_rans.encodeWithoutFreqTable(
+        std::vector<uint8_t> compressed;
+        tile_rans.encodeWithoutFreqTable(
             all_tile_diffs[tile_idx].data(), 
-            all_tile_diffs[tile_idx].size());
+            all_tile_diffs[tile_idx].size(),
+            compressed);
         // fprintf(stderr, "[ENC] tile %u compressed size=%zu\n",
         //         tile_idx, compressed.size());
         // fflush(stderr);

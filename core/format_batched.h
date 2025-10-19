@@ -10,6 +10,7 @@
 
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace codec {
 
@@ -48,14 +49,9 @@ struct TileIndexEntry {
 
 /**
  * Tile Data - individual compressed tile
+ * (Note: This is just a documentation struct, actual data is raw bytes)
  */
-struct TileData {
-    // RANSSymbol table (256 entries, shared across tiles in layer)
-    // Stored once at layer level, not per-tile
-    
-    // Differential encoded data (rANS compressed)
-    uint8_t rans_data[];         // Variable size
-};
+// Removed empty struct with flexible array member
 
 /**
  * Complete layer format:
@@ -71,15 +67,7 @@ struct TileData {
 
 static constexpr uint32_t BATCHED_MAGIC = 0xC0DEC111;
 static constexpr uint16_t BATCHED_VERSION = 1;
-static constexpr size_t RANS_TABLE_SIZE = 256 * 8;  // 256 symbols × 8 bytes
-
-/**
- * RANSSymbol - frequency table entry for entropy coding
- */
-struct RANSSymbol {
-    uint32_t freq;               // Symbol frequency
-    uint32_t cumul_freq;         // Cumulative frequency
-};
+static constexpr size_t RANS_TABLE_SIZE = 256 * 4;  // 256 symbols × 4 bytes (using rans.h RANSSymbol)
 
 } // namespace codec
 
