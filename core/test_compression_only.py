@@ -18,10 +18,40 @@ def load_codec():
         return None
     
     lib = ctypes.CDLL(str(lib_path))
+    
+    # Set return types AND argument types (critical for 64-bit pointers!)
     lib.encoder_create.restype = ctypes.c_void_p
-    lib.decoder_create.restype = ctypes.c_void_p
-    lib.decoder_is_available.restype = ctypes.c_bool
+    lib.encoder_create.argtypes = [ctypes.c_uint16]
+    
+    lib.encoder_destroy.argtypes = [ctypes.c_void_p]
+    
     lib.encoder_encode.restype = ctypes.c_float
+    lib.encoder_encode.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_int8),
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8)),
+        ctypes.POINTER(ctypes.c_size_t)
+    ]
+    
+    lib.decoder_create.restype = ctypes.c_void_p
+    lib.decoder_create.argtypes = []
+    
+    lib.decoder_destroy.argtypes = [ctypes.c_void_p]
+    
+    lib.decoder_decode.restype = ctypes.c_float
+    lib.decoder_decode.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_int8)
+    ]
+    
+    lib.decoder_is_available.restype = ctypes.c_bool
+    lib.decoder_is_available.argtypes = []
+    
+    lib.free_buffer.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
     
     return lib
 
