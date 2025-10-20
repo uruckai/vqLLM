@@ -114,16 +114,13 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
                 goto cpu_fallback;
             }
             
-            // Get decompression metadata
-            nvcompBatchedZstdOpts_t decompress_opts = nvcompBatchedZstdDefaultOpts;
+            // Get decompression temp size (v4.x API: max_chunk_size, batch_size, temp_size)
             size_t temp_size;
-            size_t metadata_size;
             
             nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSize(
-                1,  // num_chunks
-                payload_size,
-                &temp_size,
-                &metadata_size
+                payload_size,  // max_chunk_size
+                1,             // batch_size
+                &temp_size     // temp_bytes
             );
             
             if (status != nvcompSuccess) {
