@@ -59,8 +59,9 @@ __global__ void decodeTilesBatched(
     // Only thread 0 does the work (not optimal but avoids 48KB limit)
     if (threadIdx.x != 0) return;
     
-    // Allocate temporary buffer in global memory (slower but works)
-    uint8_t* diff_buffer = new uint8_t[uncompressed_size];
+    // Allocate temporary buffer (max 65536 bytes for 256x256 tile)
+    // Use stack memory instead of new/malloc in CUDA kernel!
+    uint8_t diff_buffer[65536];  // Static allocation - safe in CUDA
     
     // Decode rANS sequentially (forward order, not backward!)
     const uint32_t RANS_SCALE = 1 << 12;  // 4096
@@ -120,7 +121,7 @@ __global__ void decodeTilesBatched(
         }
     }
     
-    delete[] diff_buffer;
+    // No need to free - stack allocated
 }
 
 // Kernel launcher
