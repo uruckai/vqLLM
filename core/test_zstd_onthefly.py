@@ -148,10 +148,15 @@ class OnTheFlyLinear(torch.nn.Module):
         # Compute
         output = torch.nn.functional.linear(x, weight, self.bias)
         
-        # CRITICAL: Free immediately
+        # CRITICAL: Free immediately and synchronize
         del weight
         del weight_float
         del weight_int8
+        
+        # Force CUDA to finish and free memory NOW
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
         
         return output
 
