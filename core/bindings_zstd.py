@@ -75,6 +75,15 @@ lib.zstd_decoder_parse_header.argtypes = [
 ]
 lib.zstd_decoder_parse_header.restype = ctypes.c_int
 
+lib.zstd_decoder_decode_layer_to_gpu.argtypes = [
+    ctypes.c_void_p,  # decoder
+    ctypes.POINTER(ctypes.c_uint8),  # compressed_data
+    ctypes.c_size_t,  # compressed_size
+    ctypes.POINTER(ctypes.c_uint32),  # rows
+    ctypes.POINTER(ctypes.c_uint32)  # cols
+]
+lib.zstd_decoder_decode_layer_to_gpu.restype = ctypes.c_void_p
+
 # ============================================================================
 # Python wrapper classes
 # ============================================================================
@@ -163,7 +172,7 @@ class ZstdGPUDecoder:
     
     def decode_layer(self, compressed_data):
         """
-        Decode a compressed layer
+        Decode a compressed layer to CPU memory
         
         Args:
             compressed_data: bytes or numpy array (uint8)
@@ -213,6 +222,42 @@ class ZstdGPUDecoder:
         
         # Reshape
         return output.reshape(rows_out.value, cols_out.value)
+    
+    def decode_layer_to_gpu(self, compressed_data):
+        """
+        Decode a compressed layer directly to GPU memory (no CPU copy)
+        
+        Args:
+            compressed_data: bytes or numpy array (uint8)
+        
+        Returns:
+            (gpu_ptr, rows, cols, dtype) tuple
+            - gpu_ptr: CUDA device pointer (int)
+            - rows, cols: dimensions
+            - dtype: numpy dtype (int8)
+            
+            NOTE: Caller MUST call cudaFree on the gpu_ptr when done!
+        """
+        if isinstance(compressed_data, np.ndarray):
+            compressed_bytes = compressed_data.tobytes()
+        else:
+            compressed_bytes = bytes(compressed_data)
+        
+        rows = ctypes.c_uint32()
+        cols = ctypes.c_uint32()
+        
+        gpu_ptr = lib.zstd_decoder_decode_layer_to_gpu(
+            self.handle,
+            (ctypes.c_uint8 * len(compressed_bytes)).from_buffer_copy(compressed_bytes),
+            len(compressed_bytes),
+            ctypes.byref(rows),
+            ctypes.byref(cols)
+        )
+        
+        if not gpu_ptr:
+            raise RuntimeError("GPU decoding failed")
+        
+        return (gpu_ptr, rows.value, cols.value, np.int8)
 
 
 # ============================================================================

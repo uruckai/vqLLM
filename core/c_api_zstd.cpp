@@ -122,5 +122,22 @@ int zstd_decoder_parse_header(const uint8_t* compressed_data,
     return 1;
 }
 
+void* zstd_decoder_decode_layer_to_gpu(void* decoder,
+                                        const uint8_t* compressed_data,
+                                        size_t compressed_size,
+                                        uint32_t* rows,
+                                        uint32_t* cols) {
+    if (!decoder || !compressed_data || !rows || !cols) {
+        return nullptr;
+    }
+    
+    try {
+        ZstdGPUDecoder* dec = static_cast<ZstdGPUDecoder*>(decoder);
+        return dec->decodeLayerToGPU(compressed_data, compressed_size, *rows, *cols);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 } // extern "C"
 

@@ -28,7 +28,7 @@ public:
     static bool isAvailable();
     
     /**
-     * @brief Decode a compressed layer
+     * @brief Decode a compressed layer to CPU memory
      * @param compressed_data Input compressed data (includes header)
      * @param compressed_size Size of compressed data
      * @param output Output buffer (allocated by caller)
@@ -38,6 +38,17 @@ public:
      */
     bool decodeLayer(const uint8_t* compressed_data, size_t compressed_size,
                      int8_t* output, uint32_t& rows, uint32_t& cols);
+    
+    /**
+     * @brief Decode a compressed layer directly to GPU memory (no CPU copy)
+     * @param compressed_data Input compressed data (host memory, includes header)
+     * @param compressed_size Size of compressed data
+     * @param rows Output parameter for rows
+     * @param cols Output parameter for cols
+     * @return GPU pointer to decompressed data (caller must cudaFree), or nullptr on failure
+     */
+    void* decodeLayerToGPU(const uint8_t* compressed_data, size_t compressed_size,
+                           uint32_t& rows, uint32_t& cols);
     
     /**
      * @brief Get header info without decompressing
