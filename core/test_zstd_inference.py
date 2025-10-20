@@ -182,50 +182,57 @@ class CompressedLinear(torch.nn.Module):
         
         # Cache decompressed weight on GPU (not CPU!)
         self._cached_weight_gpu = None
+        self._cached_weight_pinned = None
+        self._gpu_failed = False
     
     def decompress_to_gpu(self):
-        """Decompress once and store on GPU"""
-        if self._cached_weight_gpu is None:
-            # Decompress on CPU/GPU (via nvCOMP)
+        if self._cached_weight_gpu is None and not self._gpu_failed:
             weight_int8 = self.decoder.decode_layer(self.compressed)
             weight_float = weight_int8.astype(np.float32) * self.scale
-            
-            # Convert to tensor on CPU first
             weight_tensor = torch.from_numpy(weight_float).to(self.dtype)
-            
-            # Free NumPy arrays immediately before GPU transfer
             del weight_float
             del weight_int8
-            
-            # Move to GPU with explicit error handling
             try:
                 self._cached_weight_gpu = weight_tensor.to(self.target_device)
+                torch.cuda.synchronize()
             except RuntimeError as e:
-                # Print debug info if OOM
+                print("  ⚠️  GPU allocation failed for layer; falling back to pinned CPU memory")
                 if torch.cuda.is_available():
-                    allocated = torch.cuda.memory_allocated() / 1024**3
-                    reserved = torch.cuda.memory_reserved() / 1024**3
-                    print(f"\n  OOM during decompress!")
-                    print(f"    Weight size: {weight_tensor.nbytes / 1024**2:.1f} MB")
-                    print(f"    Allocated: {allocated:.2f} GB")
-                    print(f"    Reserved: {reserved:.2f} GB")
-                raise
+                    free_bytes, total_bytes = torch.cuda.mem_get_info()
+                    print(f"    Driver free: {free_bytes/1024**3:.2f} GB / {total_bytes/1024**3:.2f} GB total")
+                self._gpu_failed = True
+                self._cached_weight_pinned = weight_tensor.pin_memory()
             finally:
-                # Always free CPU tensor
+                if self._cached_weight_gpu is None:
+                    # keep pinned weight
+                    pass
                 del weight_tensor
-                
-            # Aggressively free memory after each layer
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+    
+    def ensure_pinned(self):
+        if self._cached_weight_pinned is None:
+            weight_int8 = self.decoder.decode_layer(self.compressed)
+            weight_float = weight_int8.astype(np.float32) * self.scale
+            cpu_tensor = torch.from_numpy(weight_float).to(self.dtype)
+            self._cached_weight_pinned = cpu_tensor.pin_memory()
+            del cpu_tensor
+            del weight_float
+            del weight_int8
     
     def forward(self, x):
-        # Ensure weight is decompressed and on GPU
-        if self._cached_weight_gpu is None:
+        if not self._gpu_failed:
             self.decompress_to_gpu()
-        
-        # Use cached GPU weight directly (no transfer!)
-        output = torch.nn.functional.linear(x, self._cached_weight_gpu, self.bias)
-        
+        if self._cached_weight_gpu is not None:
+            weight = self._cached_weight_gpu
+            return torch.nn.functional.linear(x, weight, self.bias)
+        # fallback path
+        self.ensure_pinned()
+        weight_gpu = self._cached_weight_pinned.to(x.device, non_blocking=True)
+        output = torch.nn.functional.linear(x, weight_gpu, self.bias)
+        del weight_gpu
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         return output
 
 # Replace layers
