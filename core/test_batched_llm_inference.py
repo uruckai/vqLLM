@@ -95,8 +95,8 @@ total_original = 0
 total_compressed = 0
 compress_time = 0
 
-num_to_compress = min(20, len(linear_layers))  # Compress first 20 for speed
-print(f"  Compressing {num_to_compress} layers (test)...")
+num_to_compress = min(50, len(linear_layers))  # Compress 50 layers (cache will hold 10)
+print(f"  Compressing {num_to_compress} layers (cache will hold 10)...")
 
 for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     # Get weight
@@ -124,7 +124,7 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     total_original += weight.nbytes
     total_compressed += len(compressed)
     
-    if (i + 1) % 5 == 0:
+    if (i + 1) % 10 == 0:
         print(f"    {i+1}/{num_to_compress} layers compressed...")
 
 overall_ratio = total_original / total_compressed
@@ -145,7 +145,7 @@ class CompressedLinear(torch.nn.Module):
     
     # Class-level cache shared across all CompressedLinear instances
     _weight_cache = OrderedDict()
-    _cache_size = 5  # Cache only 5 layers (not all 20!)
+    _cache_size = 10  # Cache 10 hot layers (out of 50 compressed)
     _cache_hits = 0
     _cache_misses = 0
     _layer_id_counter = 0
