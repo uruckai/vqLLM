@@ -62,31 +62,36 @@ __global__ void decodeTilesBatched(
     // Allocate temporary buffer in global memory (slower but works)
     uint8_t* diff_buffer = new uint8_t[uncompressed_size];
     
-    // Decode rANS sequentially
-    for (int i = uncompressed_size - 1; i >= 0; i--) {
-        // Find symbol by binary search
-        uint32_t cumul = state & ((1 << 12) - 1);
+    // Decode rANS sequentially (forward order, not backward!)
+    const uint32_t RANS_SCALE = 1 << 12;  // 4096
+    const uint32_t RANS_L = 1 << 23;      // 8388608
+    
+    for (uint32_t i = 0; i < uncompressed_size; i++) {
+        // Find symbol using cumulative frequency (LINEAR SEARCH - correct!)
+        uint32_t cum_freq = state & (RANS_SCALE - 1);
         
-        uint32_t sym = 0;
-        for (int bit = 7; bit >= 0; --bit) {
-            uint32_t test_sym = sym | (1 << bit);
-            if (test_sym < 256 && d_rans_table[test_sym].start <= cumul) {
-                sym = test_sym;
+        uint8_t symbol = 0;
+        for (int s = 0; s < 256; s++) {
+            if (d_rans_table[s].start <= cum_freq && 
+                cum_freq < d_rans_table[s].start + d_rans_table[s].freq) {
+                symbol = s;
+                break;
             }
         }
         
-        const RANSSymbol& s = d_rans_table[sym];
-        state = s.freq * (state >> 12) + (cumul - s.start);
+        // Update state
+        const RANSSymbol& sym = d_rans_table[symbol];
+        state = sym.freq * (state >> 12) + (cum_freq - sym.start);
         
         // Renormalize
-        while (state < (1 << 23) && decode_pos >= 0) {
+        while (state < RANS_L && decode_pos >= 4) {
             state = (state << 8) | tile_compressed[decode_pos--];
         }
         
-        diff_buffer[i] = sym;
+        diff_buffer[i] = symbol;
     }
     
-    // Apply inverse differential encoding (LEFT predictor)
+    // Apply inverse differential encoding (LEFT predictor - simple!)
     uint32_t tile_row = entry.row;
     uint32_t tile_col = entry.col;
     
@@ -98,17 +103,14 @@ __global__ void decodeTilesBatched(
         d_output[out_row * output_cols + out_col] = static_cast<int8_t>(val);
     }
     
-    // Remaining pixels
+    // Remaining pixels (simple LEFT predictor: use immediately previous pixel)
     for (uint32_t i = 1; i < uncompressed_size; i++) {
         uint32_t local_row = i / tile_size;
         uint32_t local_col = i % tile_size;
         
-        // Get previous reconstructed value
-        int32_t pred_val = static_cast<int32_t>(d_output[(tile_row * tile_size + local_row) * output_cols + 
-                                                         (tile_col * tile_size + local_col - 1)]);
-        
+        // LEFT predictor: always use previous pixel (i-1)
         int32_t residual = static_cast<int32_t>(diff_buffer[i]) - 128;
-        val = pred_val + residual;
+        val = val + residual;  // val holds the previous reconstructed pixel
         
         out_row = tile_row * tile_size + local_row;
         out_col = tile_col * tile_size + local_col;

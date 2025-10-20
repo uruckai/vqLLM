@@ -4,7 +4,7 @@
  */
 
 #include "encoder_batched.h"
-#include "decoder_batched_cpu.h"  // Using CPU decoder (reliable fallback)
+#include "decoder_batched.h"  // Using GPU decoder (fixed!)
 #include <cstdlib>
 #include <cstring>
 
@@ -62,14 +62,14 @@ float batched_encoder_encode_layer(
 
 void* batched_decoder_create() {
     try {
-        return new BatchedCPUDecoder();
+        return new BatchedGPUDecoder();
     } catch (...) {
         return nullptr;
     }
 }
 
 void batched_decoder_destroy(void* decoder) {
-    delete static_cast<BatchedCPUDecoder*>(decoder);
+    delete static_cast<BatchedGPUDecoder*>(decoder);
 }
 
 float batched_decoder_decode_layer(
@@ -79,7 +79,7 @@ float batched_decoder_decode_layer(
     int8_t* output
 ) {
     try {
-        auto* dec = static_cast<BatchedCPUDecoder*>(decoder);
+        auto* dec = static_cast<BatchedGPUDecoder*>(decoder);
         std::vector<uint8_t> compressed_vec(compressed, compressed + compressed_size);
         
         return dec->decodeLayer(compressed_vec, output);
@@ -89,7 +89,7 @@ float batched_decoder_decode_layer(
 }
 
 bool batched_decoder_is_available() {
-    return BatchedCPUDecoder::isAvailable();
+    return BatchedGPUDecoder::isAvailable();
 }
 
 // Memory management
