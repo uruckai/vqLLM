@@ -97,7 +97,7 @@ for i, (name, module) in enumerate(linear_layers):
         print(f"    {i+1}/{len(linear_layers)} compressed...")
 
 compress_time = time.time() - t0
-total_orig = sum(w.shape[0] * w.shape[1] * 2 for n, w in linear_layers)  # fp16 = 2 bytes
+total_orig = sum(d['shape'][0] * d['shape'][1] * 2 for d in compressed_weights.values())  # fp16 = 2 bytes
 total_comp = sum(len(d['compressed']) for d in compressed_weights.values())
 
 print(f"✓ Compressed {len(compressed_weights)} layers in {compress_time:.2f}s")
