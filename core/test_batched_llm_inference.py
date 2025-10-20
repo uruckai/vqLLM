@@ -188,6 +188,10 @@ class CompressedLinear(torch.nn.Module):
             # Cache miss - decompress
             CompressedLinear._cache_misses += 1
             
+            # DEBUG: Print first few misses
+            if CompressedLinear._cache_misses <= 60:
+                print(f"[DEBUG] Miss #{CompressedLinear._cache_misses}: layer_id={self.layer_id}, cache_keys={list(self._weight_cache.keys())}")
+            
             rows, cols = self.shape
             decoded_int8, decode_time = self.decoder.decode_layer(
                 self.compressed, rows, cols
