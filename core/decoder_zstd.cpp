@@ -259,11 +259,12 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         }
         
         // Get decompression temp size
-        size_t temp_size;
+        // Note: For batched Zstd, max_chunk_size should be the MAX compressed size in the batch
+        size_t temp_size = 0;
         nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSize(
-            payload_size,
-            1,
-            &temp_size
+            payload_size,  // max_chunk_size
+            1,             // batch_size
+            &temp_size     // temp_bytes
         );
         
         if (status != nvcompSuccess) {
@@ -273,7 +274,15 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             return nullptr;
         }
         
-        fprintf(stderr, "DEBUG: nvCOMP temp_size=%zu\n", temp_size);
+        fprintf(stderr, "DEBUG: nvCOMP temp_size=%zu (payload_size=%zu)\n", temp_size, payload_size);
+        
+        // Sanity check on temp size
+        if (temp_size > 1024*1024*1024) {  // > 1GB seems wrong
+            fprintf(stderr, "ERROR: nvCOMP temp_size seems unreasonably large!\n");
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
         
         // Allocate or reuse temp buffer
         if (temp_size > impl_->temp_buffer_size) {
