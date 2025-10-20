@@ -34,11 +34,16 @@ model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 print(f"  Model: {model_name}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+# Check if CUDA is available
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f"  Device: {device}")
+
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     torch_dtype=torch.float16,
     low_cpu_mem_usage=True
-).to('cpu')
+).to(device)
 
 print("✓ Model loaded")
 print()
@@ -55,7 +60,7 @@ print()
 # Baseline inference
 print("[3/6] Running baseline inference...")
 prompt = "The capital of France is"
-inputs = tokenizer(prompt, return_tensors="pt")
+inputs = tokenizer(prompt, return_tensors="pt").to(device)
 print(f"  Prompt: '{prompt}'")
 
 with torch.no_grad():
