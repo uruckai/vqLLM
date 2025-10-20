@@ -13,6 +13,7 @@ set(SOURCES
     decoder_host.cpp
     encoder_batched.cpp
     decoder_batched_cpu.cpp
+    decoder_batched.cpp
     rans.cpp
     c_api.cpp
     c_api_batched.cpp
@@ -20,6 +21,7 @@ set(SOURCES
 
 set(CUDA_SOURCES
     decoder_gpu.cu
+    decoder_batched.cu
 )
 
 # Build shared library
