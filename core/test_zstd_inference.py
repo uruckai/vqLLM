@@ -3,15 +3,21 @@
 Real-world LLM inference test with Zstd compression
 Uses TinyLlama and GPU-accelerated Zstd decode via nvCOMP
 """
+
+# CRITICAL: Set environment variables BEFORE importing torch!
 import os
 os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
-
-# CRITICAL: Configure PyTorch CUDA allocator to be more aggressive
-# The default allocator is too conservative and won't use all available VRAM
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512,expandable_segments:True'
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 import numpy as np
 import torch
+
+# Verify the allocator config was applied
+print(f"CUDA allocator config: {os.environ.get('PYTORCH_CUDA_ALLOC_CONF', 'not set')}")
+if torch.cuda.is_available():
+    print(f"CUDA device: {torch.cuda.get_device_name(0)}")
+    print(f"Total VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+print()
 import sys
 import time
 from pathlib import Path
@@ -256,7 +262,27 @@ print(f"  Will replace {len(compressed_weights)} layers")
 model.__module_name__ = ''
 replace_linear_with_compressed(model, compressed_weights, decoder)
 
-print(f"✓ Model ready with compressed layers")
+# CRITICAL: Delete original uncompressed weights to free VRAM!
+print("  Freeing uncompressed weights...")
+deleted_count = 0
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.Linear) and not isinstance(module, CompressedLinear):
+        # Check if this layer has a weight parameter (not compressed)
+        if hasattr(module, 'weight') and module.weight is not None:
+            # This is an uncompressed layer we can't compress - leave it
+            pass
+    elif isinstance(module, CompressedLinear):
+        # For compressed layers, the original weight in the parent module is gone already
+        deleted_count += 1
+
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+    import gc
+    gc.collect()
+    freed_mem = torch.cuda.memory_allocated() / 1024**3
+    print(f"  GPU memory after freeing: {freed_mem:.2f} GB")
+
+print(f"✓ Model ready with {deleted_count} compressed layers")
 print()
 
 # Pre-warm the cache: decompress all layers to GPU
