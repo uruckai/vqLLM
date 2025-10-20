@@ -231,6 +231,28 @@ replace_linear_with_compressed(model, compressed_weights, decoder)
 print(f"✓ Model ready with compressed layers")
 print()
 
+# Pre-warm the cache: decompress all layers ONCE before generation
+print("[5.5/6] Pre-warming cache (decompressing layers)...")
+print("  This ensures all layers are decompressed before generation starts")
+warmup_count = 0
+for name, module in model.named_modules():
+    if isinstance(module, CompressedLinear):
+        if module._cached_weight_cpu is None:
+            # Trigger decompression by accessing the cached weight
+            _ = module._cached_weight_cpu or module.decoder.decode_layer(module.compressed)
+            module._cached_weight_cpu = torch.from_numpy(
+                (module.decoder.decode_layer(module.compressed).astype(np.float32) * module.scale)
+            ).to(module.dtype)
+            warmup_count += 1
+            if warmup_count % 5 == 0:
+                print(f"    {warmup_count} layers pre-cached...")
+
+print(f"✓ {warmup_count} layers pre-cached in CPU RAM")
+if torch.cuda.is_available():
+    cache_mem = torch.cuda.memory_allocated() / 1024**3
+    print(f"  GPU memory (should be same): {cache_mem:.2f} GB")
+print()
+
 # Run compressed inference
 print("[6/6] Running compressed inference...")
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
