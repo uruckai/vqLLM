@@ -167,25 +167,24 @@ class CompressedLinear(torch.nn.Module):
             self.register_buffer('bias', original_module.bias.data.clone())
         else:
             self.bias = None
+        
+        # Simple cache: decompress once, keep in CPU memory
+        self._cached_weight_cpu = None
     
     def forward(self, x):
-        # Decompress weight (happens on CPU/GPU depending on decoder)
-        weight_int8 = self.decoder.decode_layer(self.compressed)
+        # Use cached decompressed weight if available
+        if self._cached_weight_cpu is None:
+            # First time: decompress and cache on CPU
+            weight_int8 = self.decoder.decode_layer(self.compressed)
+            weight_float = weight_int8.astype(np.float32) * self.scale
+            self._cached_weight_cpu = torch.from_numpy(weight_float).to(self.dtype)
         
-        # Dequantize to float32 first (on CPU via NumPy)
-        weight_float = weight_int8.astype(np.float32) * self.scale
-        
-        # Convert to torch tensor (still on CPU)
-        weight_tensor = torch.from_numpy(weight_float).to(self.dtype)
-        
-        # Transfer to GPU and compute immediately
-        weight_gpu = weight_tensor.to(x.device, non_blocking=False)
+        # Transfer cached weight to GPU and compute
+        weight_gpu = self._cached_weight_cpu.to(x.device)
         output = torch.nn.functional.linear(x, weight_gpu, self.bias)
         
-        # Explicitly free GPU memory
+        # Free GPU copy immediately (keep CPU cache)
         del weight_gpu
-        del weight_tensor
-        torch.cuda.empty_cache()
         
         return output
 
