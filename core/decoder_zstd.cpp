@@ -290,30 +290,123 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             impl_->temp_buffer_size = temp_size;
         }
         
-        // Prepare batch parameters
-        const void* d_compressed_ptrs[1] = {d_compressed};
-        size_t compressed_sizes[1] = {payload_size};
-        void* d_decompressed_ptrs[1] = {d_decompressed};
-        size_t decompressed_sizes[1] = {header.uncompressed_size};
+        // Prepare batch parameters - arrays must be on GPU!
+        const void** d_compressed_ptrs_gpu = nullptr;
+        void** d_decompressed_ptrs_gpu = nullptr;
+        size_t* compressed_sizes_gpu = nullptr;
+        size_t* decompressed_sizes_gpu = nullptr;
+        
+        // Allocate GPU memory for pointer arrays
+        err = cudaMalloc(&d_compressed_ptrs_gpu, sizeof(void*));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc d_compressed_ptrs_gpu failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        err = cudaMalloc(&d_decompressed_ptrs_gpu, sizeof(void*));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc d_decompressed_ptrs_gpu failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        err = cudaMalloc(&compressed_sizes_gpu, sizeof(size_t));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc compressed_sizes_gpu failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        err = cudaMalloc(&decompressed_sizes_gpu, sizeof(size_t));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc decompressed_sizes_gpu failed: %s\n", cudaGetErrorString(err));
+            cudaFree(compressed_sizes_gpu);
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        // Copy pointer arrays to GPU
+        err = cudaMemcpy(d_compressed_ptrs_gpu, &d_compressed, sizeof(void*), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMemcpy d_compressed_ptrs failed: %s\n", cudaGetErrorString(err));
+            cudaFree(decompressed_sizes_gpu);
+            cudaFree(compressed_sizes_gpu);
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        err = cudaMemcpy(d_decompressed_ptrs_gpu, &d_decompressed, sizeof(void*), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMemcpy d_decompressed_ptrs failed: %s\n", cudaGetErrorString(err));
+            cudaFree(decompressed_sizes_gpu);
+            cudaFree(compressed_sizes_gpu);
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        err = cudaMemcpy(compressed_sizes_gpu, &payload_size, sizeof(size_t), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMemcpy compressed_sizes failed: %s\n", cudaGetErrorString(err));
+            cudaFree(decompressed_sizes_gpu);
+            cudaFree(compressed_sizes_gpu);
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        size_t uncompressed_size_val = header.uncompressed_size;
+        err = cudaMemcpy(decompressed_sizes_gpu, &uncompressed_size_val, sizeof(size_t), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMemcpy decompressed_sizes failed: %s\n", cudaGetErrorString(err));
+            cudaFree(decompressed_sizes_gpu);
+            cudaFree(compressed_sizes_gpu);
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
         
         fprintf(stderr, "DEBUG: Calling nvcompBatchedZstdDecompressAsync...\n");
         
         // Decompress on GPU
         status = nvcompBatchedZstdDecompressAsync(
-            d_compressed_ptrs,
-            compressed_sizes,
-            decompressed_sizes,
+            d_compressed_ptrs_gpu,
+            compressed_sizes_gpu,
+            decompressed_sizes_gpu,
             nullptr,
             1,
             impl_->d_temp_buffer,
             temp_size,
-            d_decompressed_ptrs,
+            d_decompressed_ptrs_gpu,
             nullptr,
             0
         );
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressAsync failed: %d\n", status);
+            cudaFree(decompressed_sizes_gpu);
+            cudaFree(compressed_sizes_gpu);
+            cudaFree(d_decompressed_ptrs_gpu);
+            cudaFree(d_compressed_ptrs_gpu);
             cudaFree(d_compressed);
             cudaFree(d_decompressed);
             return nullptr;
@@ -325,7 +418,11 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         
         fprintf(stderr, "DEBUG: Success! Returning GPU pointer 0x%p\n", d_decompressed);
         
-        // Free compressed buffer (no longer needed)
+        // Free temp GPU arrays and compressed buffer (no longer needed)
+        cudaFree(decompressed_sizes_gpu);
+        cudaFree(compressed_sizes_gpu);
+        cudaFree(d_decompressed_ptrs_gpu);
+        cudaFree(d_compressed_ptrs_gpu);
         cudaFree(d_compressed);
         
         // Return GPU pointer (caller must free with cudaFree)
