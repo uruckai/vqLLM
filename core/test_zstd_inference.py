@@ -6,6 +6,10 @@ Uses TinyLlama and GPU-accelerated Zstd decode via nvCOMP
 import os
 os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
 
+# CRITICAL: Configure PyTorch CUDA allocator to be more aggressive
+# The default allocator is too conservative and won't use all available VRAM
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512,expandable_segments:True'
+
 import numpy as np
 import torch
 import sys
