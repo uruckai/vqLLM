@@ -9,9 +9,13 @@
 #include <stdexcept>
 
 #ifdef NVCOMP_AVAILABLE
-#include <nvcomp.hpp>
-#include <nvcomp/zstd.hpp>
 #include <cuda_runtime.h>
+// nvCOMP v4.x uses different headers
+#if __has_include(<nvcomp/zstd.h>)
+    #include <nvcomp/zstd.h>
+#else
+    #include <nvcomp.h>
+#endif
 #endif
 
 namespace codec {
@@ -110,10 +114,17 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
                 goto cpu_fallback;
             }
             
-            // Get decompression temp size
+            // Get decompression metadata
+            nvcompBatchedZstdOpts_t decompress_opts = nvcompBatchedZstdDefaultOpts;
             size_t temp_size;
-            nvcompStatus_t status = nvcompZstdDecompressGetTempSize(
-                payload_size, &temp_size);
+            size_t metadata_size;
+            
+            nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSize(
+                1,  // num_chunks
+                payload_size,
+                &temp_size,
+                &metadata_size
+            );
             
             if (status != nvcompSuccess) {
                 cudaFree(d_compressed);
@@ -130,13 +141,24 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
                 impl_->temp_buffer_size = temp_size;
             }
             
-            // Decompress on GPU
-            size_t actual_decompressed_size = header.uncompressed_size;
-            status = nvcompZstdDecompressAsync(
-                d_compressed, payload_size,
-                impl_->d_temp_buffer, temp_size,
-                d_decompressed, &actual_decompressed_size,
-                0  // default stream
+            // Prepare batch parameters
+            const void* d_compressed_ptrs[1] = {d_compressed};
+            size_t compressed_sizes[1] = {payload_size};
+            void* d_decompressed_ptrs[1] = {d_decompressed};
+            size_t decompressed_sizes[1] = {header.uncompressed_size};
+            
+            // Decompress on GPU (batched API for v4.x)
+            status = nvcompBatchedZstdDecompressAsync(
+                d_compressed_ptrs,
+                compressed_sizes,
+                decompressed_sizes,
+                nullptr,  // actual_decompressed_sizes (optional)
+                1,  // batch_size
+                impl_->d_temp_buffer,
+                temp_size,
+                d_decompressed_ptrs,
+                nullptr,  // statuses_out (optional)
+                0  // stream
             );
             
             if (status != nvcompSuccess) {
