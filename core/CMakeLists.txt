@@ -7,6 +7,47 @@ set(CMAKE_CUDA_STANDARD 17)
 # Find CUDA
 find_package(CUDAToolkit REQUIRED)
 
+# Try to find Zstd (required for Zstd encoder/decoder)
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ZSTD libzstd)
+endif()
+
+if(NOT ZSTD_FOUND)
+    # Try manual search
+    find_path(ZSTD_INCLUDE_DIR zstd.h)
+    find_library(ZSTD_LIBRARY zstd)
+    if(ZSTD_INCLUDE_DIR AND ZSTD_LIBRARY)
+        set(ZSTD_FOUND TRUE)
+        set(ZSTD_INCLUDE_DIRS ${ZSTD_INCLUDE_DIR})
+        set(ZSTD_LIBRARIES ${ZSTD_LIBRARY})
+    endif()
+endif()
+
+# Try to find nvCOMP (optional, for GPU Zstd decode)
+find_path(NVCOMP_INCLUDE_DIR nvcomp.hpp
+    PATHS
+    /usr/local/include
+    /usr/include
+    $ENV{NVCOMP_ROOT}/include
+)
+
+find_library(NVCOMP_LIBRARY nvcomp
+    PATHS
+    /usr/local/lib
+    /usr/lib
+    $ENV{NVCOMP_ROOT}/lib
+)
+
+if(NVCOMP_INCLUDE_DIR AND NVCOMP_LIBRARY)
+    set(NVCOMP_FOUND TRUE)
+    message(STATUS "nvCOMP found: ${NVCOMP_LIBRARY}")
+    add_definitions(-DNVCOMP_AVAILABLE)
+else()
+    set(NVCOMP_FOUND FALSE)
+    message(STATUS "nvCOMP not found - Zstd will use CPU fallback")
+endif()
+
 # Source files
 set(SOURCES
     encoder_simple.cpp
@@ -18,6 +59,18 @@ set(SOURCES
     c_api.cpp
     c_api_batched.cpp
 )
+
+# Add Zstd files if Zstd is available
+if(ZSTD_FOUND)
+    list(APPEND SOURCES
+        encoder_zstd.cpp
+        decoder_zstd.cpp
+        c_api_zstd.cpp
+    )
+    message(STATUS "Zstd support enabled")
+else()
+    message(WARNING "Zstd not found - Zstd encoder/decoder will not be built")
+endif()
 
 set(CUDA_SOURCES
     decoder_gpu.cu
@@ -36,10 +89,28 @@ target_include_directories(codec_core PUBLIC
     ${CUDAToolkit_INCLUDE_DIRS}
 )
 
+if(ZSTD_FOUND)
+    target_include_directories(codec_core PUBLIC ${ZSTD_INCLUDE_DIRS})
+endif()
+
+if(NVCOMP_FOUND)
+    target_include_directories(codec_core PUBLIC ${NVCOMP_INCLUDE_DIR})
+endif()
+
 # Link CUDA libraries
 target_link_libraries(codec_core
     CUDA::cudart
 )
+
+# Link Zstd if available
+if(ZSTD_FOUND)
+    target_link_libraries(codec_core ${ZSTD_LIBRARIES})
+endif()
+
+# Link nvCOMP if available
+if(NVCOMP_FOUND)
+    target_link_libraries(codec_core ${NVCOMP_LIBRARY})
+endif()
 
 # CUDA architectures (5090 = Ada/Blackwell = sm_90)
 set_target_properties(codec_core PROPERTIES
