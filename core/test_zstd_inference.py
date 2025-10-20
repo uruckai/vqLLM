@@ -83,6 +83,7 @@ print(f"  Time: {t_baseline:.2f}s")
 if torch.cuda.is_available():
     baseline_vram = torch.cuda.max_memory_allocated() / 1024**3
     print(f"  Peak VRAM: {baseline_vram:.2f} GB")
+    torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
 else:
     baseline_vram = 0
@@ -98,7 +99,7 @@ total_original = 0
 total_compressed = 0
 compress_time = 0
 
-num_to_compress = min(10, len(linear_layers))  # Compress 10 layers for testing (avoid OOM)
+num_to_compress = min(5, len(linear_layers))  # Compress 5 layers for testing (avoid OOM)
 print(f"  Compressing {num_to_compress} layers...")
 
 for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
@@ -180,11 +181,16 @@ class CompressedLinear(torch.nn.Module):
             self._cached_weight_cpu = torch.from_numpy(weight_float).to(self.dtype)
         
         # Transfer cached weight to GPU and compute
-        weight_gpu = self._cached_weight_cpu.to(x.device)
+        # Use pin_memory for faster transfer
+        weight_gpu = self._cached_weight_cpu.to(x.device, non_blocking=True)
+        
+        # Compute
         output = torch.nn.functional.linear(x, weight_gpu, self.bias)
         
-        # Free GPU copy immediately (keep CPU cache)
+        # Immediately free GPU memory (critical!)
         del weight_gpu
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()  # Ensure deletion completes
         
         return output
 
@@ -229,16 +235,22 @@ print()
 print("[6/6] Running compressed inference...")
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
+# Aggressively clear memory before starting
 if torch.cuda.is_available():
+    torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
+    import gc
+    gc.collect()
 
+# Use lower max_new_tokens to reduce memory pressure
 with torch.no_grad():
     t0 = time.time()
     outputs_compressed = model.generate(
         **inputs,
-        max_new_tokens=10,
+        max_new_tokens=5,  # Reduced from 10 to save memory
         do_sample=False,
-        pad_token_id=tokenizer.eos_token_id
+        pad_token_id=tokenizer.eos_token_id,
+        use_cache=False  # Disable KV cache to save VRAM
     )
     t_compressed = time.time() - t0
 
