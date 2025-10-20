@@ -157,17 +157,46 @@ mem_after = torch.cuda.memory_allocated() / 1024**3
 print(f"GPU memory: {mem_after:.2f} GB")
 print()
 
-# Test
+# Test with simple forward pass first
 print("[4/4] Running inference...")
+
+# Check available memory
+if torch.cuda.is_available():
+    free_bytes, total_bytes = torch.cuda.mem_get_info()
+    print(f"GPU memory available: {free_bytes/1024**3:.2f} GB / {total_bytes/1024**3:.2f} GB")
+    allocated = torch.cuda.memory_allocated() / 1024**3
+    reserved = torch.cuda.memory_reserved() / 1024**3
+    print(f"Allocated: {allocated:.2f} GB, Reserved: {reserved:.2f} GB")
+
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
 torch.cuda.reset_peak_memory_stats()
 
-with torch.no_grad():
-    t0 = time.time()
-    outputs_compressed = model.generate(**inputs, max_new_tokens=5, pad_token_id=tokenizer.eos_token_id)
-    t_compressed = time.time() - t0
+try:
+    with torch.no_grad():
+        # Try simple forward pass first
+        print("Attempting single forward pass...")
+        logits = model(**inputs).logits
+        print(f"✓ Forward pass succeeded! Logits shape: {logits.shape}")
+        
+        # Now try generation
+        print("Attempting generation...")
+        t0 = time.time()
+        outputs_compressed = model.generate(
+            **inputs,
+            max_new_tokens=5,
+            pad_token_id=tokenizer.eos_token_id,
+            do_sample=False
+        )
+        t_compressed = time.time() - t0
+        
+        compressed_text = tokenizer.decode(outputs_compressed[0], skip_special_tokens=True)
+except RuntimeError as e:
+    print(f"❌ Error: {e}")
+    if torch.cuda.is_available():
+        print(f"GPU mem at error: {torch.cuda.memory_allocated()/1024**3:.2f} GB")
+        print(f"GPU reserved: {torch.cuda.memory_reserved()/1024**3:.2f} GB")
+    raise
 
-compressed_text = tokenizer.decode(outputs_compressed[0], skip_special_tokens=True)
 compressed_vram = torch.cuda.max_memory_allocated() / 1024**3
 
 print(f"Compressed: {t_compressed:.2f}s, VRAM: {compressed_vram:.2f} GB")
