@@ -99,7 +99,7 @@ total_original = 0
 total_compressed = 0
 compress_time = 0
 
-num_to_compress = min(5, len(linear_layers))  # Compress 5 layers for testing (avoid OOM)
+num_to_compress = min(20, len(linear_layers))  # Compress 20 layers - we have 29GB free!
 print(f"  Compressing {num_to_compress} layers...")
 
 for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
@@ -128,7 +128,7 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     total_original += weight.nbytes
     total_compressed += len(compressed)
     
-    if (i + 1) % 2 == 0:
+    if (i + 1) % 5 == 0:
         print(f"    {i+1}/{num_to_compress} layers compressed...")
 
 overall_ratio = total_original / total_compressed
@@ -242,17 +242,41 @@ if torch.cuda.is_available():
     import gc
     gc.collect()
 
-# Use lower max_new_tokens to reduce memory pressure
+# Monitor memory during generation
+print("  Generating tokens...")
 with torch.no_grad():
     t0 = time.time()
-    outputs_compressed = model.generate(
-        **inputs,
-        max_new_tokens=5,  # Reduced from 10 to save memory
-        do_sample=False,
-        pad_token_id=tokenizer.eos_token_id,
-        use_cache=False  # Disable KV cache to save VRAM
-    )
-    t_compressed = time.time() - t0
+    
+    # Print memory before
+    if torch.cuda.is_available():
+        mem_before = torch.cuda.memory_allocated() / 1024**3
+        print(f"  Memory before generation: {mem_before:.2f} GB")
+    
+    try:
+        outputs_compressed = model.generate(
+            **inputs,
+            max_new_tokens=10,  # Back to 10 now that we know we have memory
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+            use_cache=True  # Re-enable cache since we have plenty of VRAM
+        )
+        t_compressed = time.time() - t0
+        
+        # Print memory after
+        if torch.cuda.is_available():
+            mem_after = torch.cuda.memory_allocated() / 1024**3
+            mem_peak = torch.cuda.max_memory_allocated() / 1024**3
+            print(f"  Memory after generation: {mem_after:.2f} GB")
+            print(f"  Memory peak: {mem_peak:.2f} GB")
+            print(f"  Memory delta: +{mem_after - mem_before:.2f} GB")
+    except RuntimeError as e:
+        print(f"\n  ❌ Error during generation: {e}")
+        if torch.cuda.is_available():
+            mem_error = torch.cuda.memory_allocated() / 1024**3
+            mem_peak = torch.cuda.max_memory_allocated() / 1024**3
+            print(f"  Memory at error: {mem_error:.2f} GB")
+            print(f"  Peak memory: {mem_peak:.2f} GB")
+        raise
 
 compressed_text = tokenizer.decode(outputs_compressed[0], skip_special_tokens=True)
 print(f"  Output: '{compressed_text}'")
