@@ -98,7 +98,7 @@ total_original = 0
 total_compressed = 0
 compress_time = 0
 
-num_to_compress = min(20, len(linear_layers))  # Compress 20 layers for quick test
+num_to_compress = min(10, len(linear_layers))  # Compress 10 layers for testing (avoid OOM)
 print(f"  Compressing {num_to_compress} layers...")
 
 for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
@@ -127,7 +127,7 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     total_original += weight.nbytes
     total_compressed += len(compressed)
     
-    if (i + 1) % 5 == 0:
+    if (i + 1) % 2 == 0:
         print(f"    {i+1}/{num_to_compress} layers compressed...")
 
 overall_ratio = total_original / total_compressed
@@ -169,17 +169,23 @@ class CompressedLinear(torch.nn.Module):
             self.bias = None
     
     def forward(self, x):
-        # Decompress weight
+        # Decompress weight (happens on CPU/GPU depending on decoder)
         weight_int8 = self.decoder.decode_layer(self.compressed)
         
-        # Dequantize
+        # Dequantize to float32 first (on CPU via NumPy)
         weight_float = weight_int8.astype(np.float32) * self.scale
         
-        # Convert to torch tensor on correct device
-        weight = torch.from_numpy(weight_float).to(self.dtype).to(x.device)
+        # Convert to torch tensor (still on CPU)
+        weight_tensor = torch.from_numpy(weight_float).to(self.dtype)
         
-        # Apply linear transformation
-        output = torch.nn.functional.linear(x, weight, self.bias)
+        # Transfer to GPU and compute immediately
+        weight_gpu = weight_tensor.to(x.device, non_blocking=False)
+        output = torch.nn.functional.linear(x, weight_gpu, self.bias)
+        
+        # Explicitly free GPU memory
+        del weight_gpu
+        del weight_tensor
+        torch.cuda.empty_cache()
         
         return output
 
