@@ -143,13 +143,14 @@ print()
 print("[5/6] Creating compressed model...")
 
 class CompressedLinear(torch.nn.Module):
-    """Linear layer that decompresses weights on-the-fly using Zstd"""
+    """Linear layer that decompresses weights once and keeps them on GPU"""
     
-    def __init__(self, original_module, compressed_data, decoder_handle):
+    def __init__(self, original_module, compressed_data, decoder_handle, target_device='cuda'):
         super().__init__()
         self.compressed = compressed_data['compressed']
         self.shape = compressed_data['shape']
         self.scale = compressed_data['scale']
+        self.target_device = target_device
         
         # Convert numpy dtype to torch dtype
         numpy_dtype = compressed_data['dtype']
@@ -169,28 +170,32 @@ class CompressedLinear(torch.nn.Module):
         else:
             self.bias = None
         
-        # Simple cache: decompress once, keep in CPU memory
-        self._cached_weight_cpu = None
+        # Cache decompressed weight on GPU (not CPU!)
+        self._cached_weight_gpu = None
     
-    def forward(self, x):
-        # Use cached decompressed weight if available
-        if self._cached_weight_cpu is None:
-            # First time: decompress and cache on CPU
+    def decompress_to_gpu(self):
+        """Decompress once and store on GPU"""
+        if self._cached_weight_gpu is None:
+            # Decompress on CPU/GPU (via nvCOMP)
             weight_int8 = self.decoder.decode_layer(self.compressed)
             weight_float = weight_int8.astype(np.float32) * self.scale
-            self._cached_weight_cpu = torch.from_numpy(weight_float).to(self.dtype)
+            
+            # Convert to tensor and move to GPU ONCE
+            weight_tensor = torch.from_numpy(weight_float).to(self.dtype)
+            self._cached_weight_gpu = weight_tensor.to(self.target_device)
+            
+            # Free CPU memory
+            del weight_tensor
+            del weight_float
+            del weight_int8
+    
+    def forward(self, x):
+        # Ensure weight is decompressed and on GPU
+        if self._cached_weight_gpu is None:
+            self.decompress_to_gpu()
         
-        # Transfer cached weight to GPU and compute
-        # Use pin_memory for faster transfer
-        weight_gpu = self._cached_weight_cpu.to(x.device, non_blocking=True)
-        
-        # Compute
-        output = torch.nn.functional.linear(x, weight_gpu, self.bias)
-        
-        # Immediately free GPU memory (critical!)
-        del weight_gpu
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()  # Ensure deletion completes
+        # Use cached GPU weight directly (no transfer!)
+        output = torch.nn.functional.linear(x, self._cached_weight_gpu, self.bias)
         
         return output
 
@@ -207,8 +212,8 @@ def replace_linear_with_compressed(module, compressed_weights, decoder):
             # Find matching compressed weight
             for compressed_name, compressed_data in compressed_weights.items():
                 if compressed_name.endswith('.' + name) or compressed_name == name:
-                    # Replace with compressed version
-                    compressed_layer = CompressedLinear(child, compressed_data, decoder)
+                    # Replace with compressed version (will decompress to GPU later)
+                    compressed_layer = CompressedLinear(child, compressed_data, decoder, target_device=device)
                     setattr(module, name, compressed_layer)
                     break
         else:
@@ -231,26 +236,25 @@ replace_linear_with_compressed(model, compressed_weights, decoder)
 print(f"✓ Model ready with compressed layers")
 print()
 
-# Pre-warm the cache: decompress all layers ONCE before generation
-print("[5.5/6] Pre-warming cache (decompressing layers)...")
-print("  This ensures all layers are decompressed before generation starts")
+# Pre-warm the cache: decompress all layers to GPU
+print("[5.5/6] Decompressing layers to GPU...")
+print("  This happens once - then weights stay on GPU")
 warmup_count = 0
+decompress_time = 0
 for name, module in model.named_modules():
     if isinstance(module, CompressedLinear):
-        if module._cached_weight_cpu is None:
-            # Trigger decompression by accessing the cached weight
-            _ = module._cached_weight_cpu or module.decoder.decode_layer(module.compressed)
-            module._cached_weight_cpu = torch.from_numpy(
-                (module.decoder.decode_layer(module.compressed).astype(np.float32) * module.scale)
-            ).to(module.dtype)
-            warmup_count += 1
-            if warmup_count % 5 == 0:
-                print(f"    {warmup_count} layers pre-cached...")
+        t0 = time.time()
+        module.decompress_to_gpu()
+        decompress_time += time.time() - t0
+        warmup_count += 1
+        if warmup_count % 5 == 0:
+            print(f"    {warmup_count}/{num_to_compress} layers decompressed to GPU...")
 
-print(f"✓ {warmup_count} layers pre-cached in CPU RAM")
+print(f"✓ {warmup_count} layers decompressed to GPU in {decompress_time:.2f}s")
 if torch.cuda.is_available():
     cache_mem = torch.cuda.memory_allocated() / 1024**3
-    print(f"  GPU memory (should be same): {cache_mem:.2f} GB")
+    print(f"  GPU memory now: {cache_mem:.2f} GB (+{cache_mem - 2.06:.2f} GB for decompressed weights)")
+    torch.cuda.empty_cache()  # Clean up any temporary allocations
 print()
 
 # Run compressed inference
