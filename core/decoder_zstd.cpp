@@ -211,6 +211,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
     // Parse header
     LayerHeaderZstd header;
     if (!parseHeader(compressed_data, compressed_size, header)) {
+        fprintf(stderr, "ERROR: Failed to parse header\n");
         return nullptr;
     }
     
@@ -220,9 +221,13 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
     const uint8_t* payload = compressed_data + sizeof(LayerHeaderZstd);
     size_t payload_size = header.compressed_size;
     
+    fprintf(stderr, "DEBUG: rows=%u, cols=%u, payload_size=%zu, uncompressed_size=%u\n",
+            rows, cols, payload_size, header.uncompressed_size);
+    
 #ifdef NVCOMP_AVAILABLE
     // GPU decompression ONLY - no CPU fallback
     if (!isAvailable()) {
+        fprintf(stderr, "ERROR: GPU not available\n");
         return nullptr;
     }
     
@@ -233,11 +238,13 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         
         cudaError_t err = cudaMalloc(&d_compressed, payload_size);
         if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc d_compressed failed: %s\n", cudaGetErrorString(err));
             return nullptr;
         }
         
         err = cudaMalloc(&d_decompressed, header.uncompressed_size);
         if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc d_decompressed failed: %s\n", cudaGetErrorString(err));
             cudaFree(d_compressed);
             return nullptr;
         }
@@ -245,6 +252,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         // Copy compressed data to GPU
         err = cudaMemcpy(d_compressed, payload, payload_size, cudaMemcpyHostToDevice);
         if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMemcpy H2D failed: %s\n", cudaGetErrorString(err));
             cudaFree(d_compressed);
             cudaFree(d_decompressed);
             return nullptr;
@@ -259,17 +267,26 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         );
         
         if (status != nvcompSuccess) {
+            fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSize failed: %d\n", status);
             cudaFree(d_compressed);
             cudaFree(d_decompressed);
             return nullptr;
         }
+        
+        fprintf(stderr, "DEBUG: nvCOMP temp_size=%zu\n", temp_size);
         
         // Allocate or reuse temp buffer
         if (temp_size > impl_->temp_buffer_size) {
             if (impl_->d_temp_buffer) {
                 cudaFree(impl_->d_temp_buffer);
             }
-            cudaMalloc(&impl_->d_temp_buffer, temp_size);
+            err = cudaMalloc(&impl_->d_temp_buffer, temp_size);
+            if (err != cudaSuccess) {
+                fprintf(stderr, "ERROR: cudaMalloc temp buffer failed: %s\n", cudaGetErrorString(err));
+                cudaFree(d_compressed);
+                cudaFree(d_decompressed);
+                return nullptr;
+            }
             impl_->temp_buffer_size = temp_size;
         }
         
@@ -278,6 +295,8 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         size_t compressed_sizes[1] = {payload_size};
         void* d_decompressed_ptrs[1] = {d_decompressed};
         size_t decompressed_sizes[1] = {header.uncompressed_size};
+        
+        fprintf(stderr, "DEBUG: Calling nvcompBatchedZstdDecompressAsync...\n");
         
         // Decompress on GPU
         status = nvcompBatchedZstdDecompressAsync(
@@ -294,13 +313,17 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         );
         
         if (status != nvcompSuccess) {
+            fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressAsync failed: %d\n", status);
             cudaFree(d_compressed);
             cudaFree(d_decompressed);
             return nullptr;
         }
         
         // Wait for completion
+        fprintf(stderr, "DEBUG: Waiting for GPU...\n");
         cudaDeviceSynchronize();
+        
+        fprintf(stderr, "DEBUG: Success! Returning GPU pointer 0x%p\n", d_decompressed);
         
         // Free compressed buffer (no longer needed)
         cudaFree(d_compressed);
@@ -309,9 +332,11 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         return d_decompressed;
         
     } catch (...) {
+        fprintf(stderr, "ERROR: Exception caught\n");
         return nullptr;
     }
 #else
+    fprintf(stderr, "ERROR: NVCOMP not available at compile time\n");
     // No GPU support
     return nullptr;
 #endif
