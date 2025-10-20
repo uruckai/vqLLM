@@ -138,8 +138,17 @@ print()
 # Replace layers with compressed versions
 print("[5/6] Creating compressed model...")
 
+from collections import OrderedDict
+
 class CompressedLinear(torch.nn.Module):
-    """Linear layer that decompresses weights on-the-fly"""
+    """Linear layer that decompresses weights on-the-fly with LRU caching"""
+    
+    # Class-level cache shared across all CompressedLinear instances
+    _weight_cache = OrderedDict()
+    _cache_size = 5  # Cache only 5 layers (not all 20!)
+    _cache_hits = 0
+    _cache_misses = 0
+    _layer_id_counter = 0
     
     def __init__(self, original_module, compressed_data, decoder_handle):
         super().__init__()
@@ -158,6 +167,10 @@ class CompressedLinear(torch.nn.Module):
         
         self.decoder = decoder_handle
         
+        # Unique ID for this layer (for cache key)
+        self.layer_id = CompressedLinear._layer_id_counter
+        CompressedLinear._layer_id_counter += 1
+        
         # Keep bias uncompressed
         if original_module.bias is not None:
             self.bias = original_module.bias
@@ -165,25 +178,57 @@ class CompressedLinear(torch.nn.Module):
             self.register_parameter('bias', None)
     
     def forward(self, x):
-        # Decompress weights
-        rows, cols = self.shape
-        decoded_int8, decode_time = self.decoder.decode_layer(
-            self.compressed, rows, cols
-        )
-        
-        # Dequantize
-        weight_fp = torch.from_numpy(decoded_int8.astype(np.float32) * self.scale)
-        weight = weight_fp.to(dtype=self.torch_dtype, device=x.device)
+        # Check cache first
+        if self.layer_id in self._weight_cache:
+            # Cache hit! Move to end (most recently used)
+            self._weight_cache.move_to_end(self.layer_id)
+            weight = self._weight_cache[self.layer_id].to(x.device)
+            CompressedLinear._cache_hits += 1
+        else:
+            # Cache miss - decompress
+            CompressedLinear._cache_misses += 1
+            
+            rows, cols = self.shape
+            decoded_int8, decode_time = self.decoder.decode_layer(
+                self.compressed, rows, cols
+            )
+            
+            # Dequantize
+            weight_fp = torch.from_numpy(decoded_int8.astype(np.float32) * self.scale)
+            weight = weight_fp.to(dtype=self.torch_dtype, device=x.device)
+            
+            # Add to cache
+            self._weight_cache[self.layer_id] = weight.cpu()  # Store on CPU to save VRAM
+            
+            # Evict oldest if cache is full
+            if len(self._weight_cache) > self._cache_size:
+                oldest_id = next(iter(self._weight_cache))
+                evicted = self._weight_cache.pop(oldest_id)
+                del evicted
         
         # Linear operation
         output = torch.nn.functional.linear(x, weight, self.bias)
         
-        # Free memory
-        del weight, weight_fp
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
         return output
+    
+    @classmethod
+    def get_cache_stats(cls):
+        """Return cache statistics"""
+        total = cls._cache_hits + cls._cache_misses
+        hit_rate = cls._cache_hits / total if total > 0 else 0
+        return {
+            'hits': cls._cache_hits,
+            'misses': cls._cache_misses,
+            'hit_rate': hit_rate,
+            'cache_size': len(cls._weight_cache),
+            'max_cache_size': cls._cache_size
+        }
+    
+    @classmethod
+    def reset_cache_stats(cls):
+        """Reset cache statistics"""
+        cls._cache_hits = 0
+        cls._cache_misses = 0
 
 # Replace compressed layers
 for name, compressed_data in compressed_weights.items():
@@ -231,6 +276,10 @@ else:
     compressed_vram = 0
 
 print()
+
+# Get cache stats
+cache_stats = CompressedLinear.get_cache_stats()
+
 print("="*80)
 print("RESULTS SUMMARY")
 print("="*80)
@@ -239,6 +288,13 @@ print(f"Compression:")
 print(f"  Layers compressed:    {len(compressed_weights)}/{len(linear_layers)}")
 print(f"  Compression ratio:    {overall_ratio:.2f}x")
 print(f"  Memory saved:         {(total_original - total_compressed)/1024**2:.1f} MB")
+print()
+print(f"Cache Performance:")
+print(f"  Cache size:           {cache_stats['cache_size']}/{cache_stats['max_cache_size']} layers")
+print(f"  Cache hits:           {cache_stats['hits']}")
+print(f"  Cache misses:         {cache_stats['misses']}")
+print(f"  Hit rate:             {cache_stats['hit_rate']*100:.1f}%")
+print(f"  Decodes avoided:      {cache_stats['hits']} (saved ~{cache_stats['hits']*0.1:.1f}s)")
 print()
 print(f"Inference:")
 print(f"  Baseline time:        {t_baseline:.2f}s")
