@@ -179,6 +179,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
     
     // Fallback to CPU Zstd if nvCOMP failed
     if (compressed_size == 0) {
+        fprintf(stderr, "GPU compression failed or unavailable, using CPU Zstd fallback\n");
         size_t max_compressed_size = ZSTD_compressBound(uncompressed_size);
         compressed_payload.resize(max_compressed_size);
         

@@ -55,10 +55,10 @@ print('Creating test data (256x256)...')
 data = np.random.randint(-128, 127, size=(256, 256), dtype=np.int8)
 
 print('Compressing...')
-compressed = enc.encode_layer(data)
+compressed, ratio = enc.encode_layer(data)
 print(f'  Original: {data.size} bytes')
 print(f'  Compressed: {len(compressed)} bytes')
-print(f'  Ratio: {data.size / len(compressed):.2f}x')
+print(f'  Ratio: {ratio:.2f}x')
 
 print('Creating GPU decoder...')
 dec = ZstdGPUDecoder()
