@@ -1,12 +1,20 @@
 /**
  * @file encoder_zstd.cpp
- * @brief Zstd encoder implementation
+ * @brief Zstd encoder implementation using nvCOMP
  */
 
 #include "encoder_zstd.h"
 #include <zstd.h>
 #include <stdexcept>
 #include <cstring>
+
+#ifdef NVCOMP_AVAILABLE
+#include <cuda_runtime.h>
+#if __has_include(<nvcomp/zstd.h>)
+    #include <nvcomp/zstd.h>
+    #define USE_NVCOMP_ZSTD
+#endif
+#endif
 
 namespace codec {
 
@@ -21,36 +29,121 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                                 std::vector<uint8_t>& output) {
     uint32_t uncompressed_size = rows * cols;
     
-    // Estimate compressed size
-    size_t max_compressed_size = ZSTD_compressBound(uncompressed_size);
+    size_t compressed_size = 0;
+    std::vector<uint8_t> compressed_payload;
     
-    // Allocate output buffer
+#ifdef USE_NVCOMP_ZSTD
+    // Use nvCOMP GPU compression for format compatibility
+    try {
+        // Upload data to GPU
+        void* d_uncompressed = nullptr;
+        cudaError_t err = cudaMalloc(&d_uncompressed, uncompressed_size);
+        if (err == cudaSuccess) {
+            err = cudaMemcpy(d_uncompressed, data, uncompressed_size, cudaMemcpyHostToDevice);
+            if (err == cudaSuccess) {
+                // Get compressed size
+                nvcompBatchedZstdCompressOpts_t opts = {};
+                opts.level = compression_level_;
+                
+                size_t temp_size = 0;
+                size_t max_comp_size = 0;
+                
+                const void* d_uncompressed_ptrs[1] = {d_uncompressed};
+                size_t uncompressed_sizes[1] = {uncompressed_size};
+                
+                nvcompStatus_t status = nvcompBatchedZstdCompressGetTempSize(
+                    uncompressed_size,
+                    1,
+                    opts,
+                    &temp_size
+                );
+                
+                if (status == nvcompSuccess) {
+                    status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
+                        uncompressed_size,
+                        opts,
+                        &max_comp_size
+                    );
+                }
+                
+                if (status == nvcompSuccess) {
+                    // Allocate temp and output buffers
+                    void* d_temp = nullptr;
+                    void* d_compressed = nullptr;
+                    
+                    cudaMalloc(&d_temp, temp_size);
+                    cudaMalloc(&d_compressed, max_comp_size);
+                    
+                    void* d_compressed_ptrs[1] = {d_compressed};
+                    size_t compressed_sizes[1] = {0};
+                    
+                    // Compress on GPU
+                    status = nvcompBatchedZstdCompressAsync(
+                        d_uncompressed_ptrs,
+                        uncompressed_sizes,
+                        max_comp_size,
+                        1,
+                        d_temp,
+                        temp_size,
+                        d_compressed_ptrs,
+                        compressed_sizes,
+                        opts,
+                        0
+                    );
+                    
+                    cudaDeviceSynchronize();
+                    
+                    if (status == nvcompSuccess && compressed_sizes[0] > 0) {
+                        // Copy compressed data back
+                        compressed_payload.resize(compressed_sizes[0]);
+                        cudaMemcpy(compressed_payload.data(), d_compressed, 
+                                 compressed_sizes[0], cudaMemcpyDeviceToHost);
+                        compressed_size = compressed_sizes[0];
+                    }
+                    
+                    cudaFree(d_temp);
+                    cudaFree(d_compressed);
+                }
+            }
+            cudaFree(d_uncompressed);
+        }
+    } catch (...) {
+        // Fall back to CPU compression
+        compressed_size = 0;
+    }
+#endif
+    
+    // Fallback to CPU Zstd if nvCOMP failed
+    if (compressed_size == 0) {
+        size_t max_compressed_size = ZSTD_compressBound(uncompressed_size);
+        compressed_payload.resize(max_compressed_size);
+        
+        compressed_size = ZSTD_compress(
+            compressed_payload.data(),
+            max_compressed_size,
+            data,
+            uncompressed_size,
+            compression_level_
+        );
+        
+        if (ZSTD_isError(compressed_size)) {
+            throw std::runtime_error(std::string("Zstd compression failed: ") + 
+                                     ZSTD_getErrorName(compressed_size));
+        }
+        
+        compressed_payload.resize(compressed_size);
+    }
+    
+    // Build output with header
     output.clear();
-    output.reserve(sizeof(LayerHeaderZstd) + max_compressed_size);
+    output.reserve(sizeof(LayerHeaderZstd) + compressed_size);
     
     // Write placeholder header
     size_t header_offset = output.size();
     output.resize(output.size() + sizeof(LayerHeaderZstd));
     
-    // Compress data
-    size_t compressed_data_offset = output.size();
-    output.resize(compressed_data_offset + max_compressed_size);
-    
-    size_t compressed_size = ZSTD_compress(
-        output.data() + compressed_data_offset,
-        max_compressed_size,
-        data,
-        uncompressed_size,
-        compression_level_
-    );
-    
-    if (ZSTD_isError(compressed_size)) {
-        throw std::runtime_error(std::string("Zstd compression failed: ") + 
-                                 ZSTD_getErrorName(compressed_size));
-    }
-    
-    // Resize to actual compressed size
-    output.resize(compressed_data_offset + compressed_size);
+    // Append compressed data
+    output.insert(output.end(), compressed_payload.begin(), compressed_payload.end());
     
     // Calculate checksum (simple XOR for now, can upgrade to XXH64)
     uint32_t checksum = 0;
