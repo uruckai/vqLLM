@@ -130,19 +130,34 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                         0         // stream
                     );
                     
+                    if (status != nvcompSuccess) {
+                        fprintf(stderr, "nvCOMP compression failed with status %d, falling back to CPU\n", status);
+                    }
+                    
                     cudaDeviceSynchronize();
                     
                     if (status == nvcompSuccess) {
                         // Copy compressed size back
                         size_t actual_compressed_size = 0;
-                        cudaMemcpy(&actual_compressed_size, d_compressed_sizes, sizeof(size_t), cudaMemcpyDeviceToHost);
+                        err = cudaMemcpy(&actual_compressed_size, d_compressed_sizes, sizeof(size_t), cudaMemcpyDeviceToHost);
                         
-                        if (actual_compressed_size > 0) {
+                        if (err != cudaSuccess) {
+                            fprintf(stderr, "Failed to copy compressed size back: %s\n", cudaGetErrorString(err));
+                        } else if (actual_compressed_size > 0 && actual_compressed_size <= max_comp_size) {
                             // Copy compressed data back
                             compressed_payload.resize(actual_compressed_size);
-                            cudaMemcpy(compressed_payload.data(), d_compressed, 
-                                     actual_compressed_size, cudaMemcpyDeviceToHost);
-                            compressed_size = actual_compressed_size;
+                            err = cudaMemcpy(compressed_payload.data(), d_compressed, 
+                                           actual_compressed_size, cudaMemcpyDeviceToHost);
+                            if (err == cudaSuccess) {
+                                compressed_size = actual_compressed_size;
+                                fprintf(stderr, "nvCOMP GPU compression: %u -> %zu bytes\n", 
+                                       uncompressed_size, compressed_size);
+                            } else {
+                                fprintf(stderr, "Failed to copy compressed data: %s\n", cudaGetErrorString(err));
+                            }
+                        } else {
+                            fprintf(stderr, "Invalid compressed size: %zu (max: %zu)\n", 
+                                   actual_compressed_size, max_comp_size);
                         }
                     }
                     
