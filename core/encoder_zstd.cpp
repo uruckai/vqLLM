@@ -148,28 +148,63 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         }
         
         fprintf(stderr, "[ENCODER] Allocated temp (%zu) and compressed (%zu) buffers\n", temp_size, max_comp_size);
-                    
-                    // Allocate GPU memory for pointer/size arrays
-                    const void* h_uncompressed_ptrs[1] = {d_uncompressed};
-                    size_t h_uncompressed_sizes[1] = {uncompressed_size};
-                    void* h_compressed_ptrs[1] = {d_compressed};
-                    size_t h_compressed_sizes[1] = {0};
-                    
-                    const void** d_uncompressed_ptrs = nullptr;
-                    size_t* d_uncompressed_sizes = nullptr;
-                    void** d_compressed_ptrs = nullptr;
-                    size_t* d_compressed_sizes = nullptr;
-                    
-                    cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
-                    cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
-                    cudaMalloc(&d_compressed_ptrs, sizeof(void*));
-                    cudaMalloc(&d_compressed_sizes, sizeof(size_t));
-                    
-                    cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
-                    cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
-                    cudaMemcpy(d_compressed_ptrs, h_compressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
-                    cudaMemcpy(d_compressed_sizes, h_compressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
-                    
+        
+        // Allocate GPU memory for pointer/size arrays (for CompressAsync)
+        void* h_compressed_ptrs[1] = {d_compressed};
+        size_t h_compressed_sizes[1] = {0};
+        
+        d_uncompressed_ptrs = nullptr;
+        d_uncompressed_sizes = nullptr;
+        void** d_compressed_ptrs = nullptr;
+        size_t* d_compressed_sizes = nullptr;
+        
+        err = cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_ptrs (2nd) failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_temp);
+            cudaFree(d_compressed);
+            cudaFree(d_uncompressed);
+            throw std::runtime_error("CUDA malloc failed");
+        }
+        
+        err = cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_sizes (2nd) failed: %s\n", cudaGetErrorString(err));
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_temp);
+            cudaFree(d_compressed);
+            cudaFree(d_uncompressed);
+            throw std::runtime_error("CUDA malloc failed");
+        }
+        
+        err = cudaMalloc(&d_compressed_ptrs, sizeof(void*));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaMalloc d_compressed_ptrs failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_uncompressed_sizes);
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_temp);
+            cudaFree(d_compressed);
+            cudaFree(d_uncompressed);
+            throw std::runtime_error("CUDA malloc failed");
+        }
+        
+        err = cudaMalloc(&d_compressed_sizes, sizeof(size_t));
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaMalloc d_compressed_sizes failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_compressed_ptrs);
+            cudaFree(d_uncompressed_sizes);
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_temp);
+            cudaFree(d_compressed);
+            cudaFree(d_uncompressed);
+            throw std::runtime_error("CUDA malloc failed");
+        }
+        
+        cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_compressed_ptrs, h_compressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_compressed_sizes, h_compressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+        
         fprintf(stderr, "[ENCODER] Calling nvcompBatchedZstdCompressAsync...\n");
         
         // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0)
