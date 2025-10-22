@@ -98,10 +98,27 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             throw std::runtime_error("CUDA malloc failed");
         }
         
-        cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+        err = cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaMemcpy d_uncompressed_ptrs failed: %s\n", cudaGetErrorString(err));
+        }
+        
+        err = cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaMemcpy d_uncompressed_sizes failed: %s\n", cudaGetErrorString(err));
+        }
+        
+        // Check for any CUDA errors before nvCOMP call
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] WARNING: CUDA error before GetTempSize: %s\n", cudaGetErrorString(err));
+        }
         
         fprintf(stderr, "[ENCODER] Calling GetTempSizeSync...\n");
+        fprintf(stderr, "[ENCODER]   num_chunks=1, max_uncompressed=%u, max_total=%u\n", 
+               uncompressed_size, uncompressed_size);
+        fprintf(stderr, "[ENCODER]   d_uncompressed_ptrs=%p, d_uncompressed_sizes=%p\n",
+               d_uncompressed_ptrs, d_uncompressed_sizes);
         
         // nvcompBatchedZstdCompressGetTempSizeSync signature (nvCOMP 5.0):
         // (device_uncompressed_ptrs, device_uncompressed_sizes, num_chunks,
@@ -116,6 +133,8 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             uncompressed_size,  // max_total_uncompressed_bytes (total of all chunks)
             0   // stream
         );
+        
+        fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d\n", status);
         
         cudaFree((void*)d_uncompressed_ptrs);
         cudaFree(d_uncompressed_sizes);
