@@ -9,14 +9,14 @@ cd /workspace/CodecLLM
 
 # Pull latest code
 echo ""
-echo "[1/6] Pulling latest code..."
+echo "[1/5] Pulling latest code..."
 git fetch origin
 git reset --hard origin/main
 git pull
 
 # Rebuild
 echo ""
-echo "[2/6] Rebuilding codec..."
+echo "[2/5] Rebuilding codec..."
 cd core
 rm -rf build
 mkdir build
@@ -39,12 +39,12 @@ echo "✓ Build successful!"
 
 # Verify nvCOMP linkage
 echo ""
-echo "[3/6] Verifying nvCOMP linkage..."
+echo "[3/5] Verifying nvCOMP linkage..."
 ldd libcodec_core.so | grep nvcomp
 
 # Quick encoder test
 echo ""
-echo "[4/6] Testing Zstd encoder..."
+echo "[4/5] Testing Zstd encoder..."
 cd ..
 python3 -c "
 from bindings_zstd import ZstdEncoder, ZstdGPUDecoder
@@ -78,17 +78,11 @@ fi
 
 # Full GPU decode test
 echo ""
-echo "[5/6] Testing GPU decode..."
+echo "[5/5] Testing GPU decode..."
 python3 test_gpu_direct_simple.py
 
-# Summary
 echo ""
-echo "[6/6] Summary"
 echo "================================"
-echo "✓ All tests passed!"
-echo ""
-echo "Next steps:"
-echo "  - Run full LLM inference test:"
-echo "    python3 test_zstd_inference.py"
+echo "Test complete!"
 echo "================================"
 
