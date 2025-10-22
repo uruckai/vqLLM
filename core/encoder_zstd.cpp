@@ -123,9 +123,10 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         // nvcompBatchedZstdCompressGetTempSizeSync signature (nvCOMP 5.0):
         // (device_uncompressed_ptrs, device_uncompressed_sizes, num_chunks,
         //  max_uncompressed_chunk_bytes, opts, temp_bytes, max_total_uncompressed_bytes, stream)
+        // Try with NULL pointers first - maybe it doesn't need actual data for temp size calculation
         status = nvcompBatchedZstdCompressGetTempSizeSync(
-            d_uncompressed_ptrs,
-            d_uncompressed_sizes,
+            nullptr,  // Try NULL - maybe it only needs sizes, not actual data
+            nullptr,  // Try NULL
             1,  // num_chunks
             uncompressed_size,  // max_uncompressed_chunk_bytes
             opts,
@@ -134,7 +135,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             0   // stream
         );
         
-        fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d\n", status);
+        fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d, temp_size=%zu\n", status, temp_size);
         
         cudaFree((void*)d_uncompressed_ptrs);
         cudaFree(d_uncompressed_sizes);
