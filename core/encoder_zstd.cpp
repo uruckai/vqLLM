@@ -105,15 +105,15 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         
         // nvcompBatchedZstdCompressGetTempSizeSync signature (nvCOMP 5.0):
         // (device_uncompressed_ptrs, device_uncompressed_sizes, num_chunks,
-        //  max_compressed_chunk_bytes, opts, temp_bytes, ???, stream)
+        //  max_uncompressed_chunk_bytes, opts, temp_bytes, max_total_uncompressed_bytes, stream)
         status = nvcompBatchedZstdCompressGetTempSizeSync(
             d_uncompressed_ptrs,
             d_uncompressed_sizes,
             1,  // num_chunks
-            max_comp_size,
+            uncompressed_size,  // max_uncompressed_chunk_bytes
             opts,
             &temp_size,
-            0,  // unknown parameter
+            uncompressed_size,  // max_total_uncompressed_bytes (total of all chunks)
             0   // stream
         );
         
@@ -207,11 +207,15 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         
         fprintf(stderr, "[ENCODER] Calling nvcompBatchedZstdCompressAsync...\n");
         
-        // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0)
+        // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0):
+        // (device_uncompressed_chunk_ptrs, device_uncompressed_chunk_bytes,
+        //  max_uncompressed_chunk_bytes, num_chunks, device_temp_ptr, temp_bytes,
+        //  device_compressed_chunk_ptrs, device_compressed_chunk_bytes,
+        //  compress_opts, device_statuses, stream)
         status = nvcompBatchedZstdCompressAsync(
             d_uncompressed_ptrs,
             d_uncompressed_sizes,
-            max_comp_size,
+            uncompressed_size,  // max_uncompressed_chunk_bytes
             1,  // num_chunks
             d_temp,
             temp_size,
