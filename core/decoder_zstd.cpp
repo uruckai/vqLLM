@@ -264,17 +264,18 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         }
         
         // Get decompression temp size
-        // NOTE: For Zstd batched API, first parameter is MAX UNCOMPRESSED chunk size, not compressed!
-        // nvCOMP 5.0 API
+        // nvCOMP 5.0: First param is MAX COMPRESSED SIZE (not uncompressed!)
         nvcompBatchedZstdDecompressOpts_t opts = {};
         size_t temp_size;
         nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeAsync(
-            header.uncompressed_size,  // max_uncompressed_chunk_size
+            payload_size,              // max_compressed_chunk_size
             1,                         // batch_size
             opts,                      // options
             &temp_size,
             0                          // stream
         );
+        
+        fprintf(stderr, "DEBUG: nvCOMP temp_size=%zu (for compressed_size=%zu)\n", temp_size, payload_size);
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSize failed: %d\n", status);
