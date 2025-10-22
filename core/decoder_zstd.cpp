@@ -117,10 +117,12 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
             // Get decompression temp size (v4.x API: max_chunk_size, batch_size, temp_size)
             size_t temp_size;
             
-            nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSize(
+            // nvCOMP 5.0 uses async version
+            nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeAsync(
                 payload_size,  // max_chunk_size
                 1,             // batch_size
-                &temp_size     // temp_bytes
+                &temp_size,    // temp_bytes
+                0              // stream
             );
             
             if (status != nvcompSuccess) {
@@ -144,7 +146,8 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
             void* d_decompressed_ptrs[1] = {d_decompressed};
             size_t decompressed_sizes[1] = {header.uncompressed_size};
             
-            // Decompress on GPU
+            // Decompress on GPU (nvCOMP 5.0 requires opts struct)
+            nvcompBatchedZstdDecompressOpts_t opts = {};
             status = nvcompBatchedZstdDecompressAsync(
                 d_compressed_ptrs,
                 compressed_sizes,
@@ -154,7 +157,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
                 impl_->d_temp_buffer,
                 temp_size,
                 d_decompressed_ptrs,
-                nullptr,  // statuses_out (optional)
+                opts,  // options struct (required in v5)
                 0  // stream
             );
             
@@ -260,11 +263,13 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         
         // Get decompression temp size
         // NOTE: For Zstd batched API, first parameter is MAX UNCOMPRESSED chunk size, not compressed!
+        // nvCOMP 5.0 uses async version
         size_t temp_size;
-        nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSize(
+        nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeAsync(
             header.uncompressed_size,  // max_uncompressed_chunk_size (NOT compressed size!)
             1,                         // batch_size
-            &temp_size
+            &temp_size,
+            0                          // stream
         );
         
         if (status != nvcompSuccess) {
@@ -388,7 +393,8 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         
         fprintf(stderr, "DEBUG: Calling nvcompBatchedZstdDecompressAsync...\n");
         
-        // Decompress on GPU
+        // Decompress on GPU (nvCOMP 5.0 requires opts struct)
+        nvcompBatchedZstdDecompressOpts_t opts = {};
         status = nvcompBatchedZstdDecompressAsync(
             d_compressed_ptrs_gpu,
             compressed_sizes_gpu,
@@ -398,7 +404,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             impl_->d_temp_buffer,
             temp_size,
             d_decompressed_ptrs_gpu,
-            nullptr,
+            opts,  // options struct (required in v5)
             0
         );
         
