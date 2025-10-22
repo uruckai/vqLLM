@@ -261,16 +261,20 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             return nullptr;
         }
         
-        // Create decompression manager from compressed data
-        auto decomp_manager = nvcomp::create_manager(d_compressed, payload_size, 0);
+        // Create decompression manager from compressed data (on GPU)
+        cudaStream_t stream = 0;
+        auto decomp_manager = nvcomp::create_manager(
+            static_cast<const uint8_t*>(d_compressed),
+            stream
+        );
         
-        // Get decompressed size
-        size_t decomp_size = decomp_manager->get_decompressed_size();
-        fprintf(stderr, "DEBUG: Manager reports decompressed_size=%zu\n", decomp_size);
+        // Configure decompression
+        nvcomp::DecompressionConfig decomp_config;
+        decomp_config.decomp_data_size = header.uncompressed_size;
         
         // Allocate output
         void* d_decompressed = nullptr;
-        err = cudaMalloc(&d_decompressed, decomp_size);
+        err = cudaMalloc(&d_decompressed, header.uncompressed_size);
         if (err != cudaSuccess) {
             fprintf(stderr, "ERROR: cudaMalloc d_decompressed failed: %s\n", cudaGetErrorString(err));
             cudaFree(d_compressed);
@@ -278,8 +282,13 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         }
         
         // Decompress
-        decomp_manager->decompress(d_decompressed, decomp_size, 0);
-        cudaDeviceSynchronize();
+        decomp_manager->decompress(
+            static_cast<uint8_t*>(d_decompressed),
+            static_cast<const uint8_t*>(d_compressed),
+            decomp_config,
+            nullptr  // actual_decomp_data_size (optional)
+        );
+        cudaStreamSynchronize(stream);
         
         fprintf(stderr, "DEBUG: Manager API success!\n");
         
@@ -322,24 +331,25 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         }
         
         // Get decompression temp size
-        // Try Sync version for standard Zstd frames
+        // Batched API fallback (if Manager API failed)
+        nvcompBatchedZstdDecompressOpts_t opts = {};
         size_t temp_size;
-        nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeSync(
+        nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeAsync(
             payload_size,              // max_compressed_chunk_size
-            1                          // batch_size
+            1,                         // batch_size
+            opts,                      // options
+            &temp_size,
+            0                          // stream
         );
         
         if (status != nvcompSuccess) {
-            fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSizeSync failed: %d\n", status);
+            fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSizeAsync failed: %d\n", status);
             cudaFree(d_compressed);
             cudaFree(d_decompressed);
             return nullptr;
         }
         
-        // The Sync version might not return temp_size, try getting it another way
-        // Or just allocate a reasonable amount
-        temp_size = payload_size * 2;  // Conservative estimate
-        fprintf(stderr, "DEBUG: Using temp_size=%zu (conservative: 2x compressed)\n", temp_size);
+        fprintf(stderr, "DEBUG: nvCOMP temp_size=%zu (for compressed_size=%zu)\n", temp_size, payload_size);
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSize failed: %d\n", status);
@@ -463,6 +473,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         fprintf(stderr, "DEBUG: Calling nvcompBatchedZstdDecompressAsync...\n");
         
         // Decompress on GPU (nvCOMP 5.0 API)
+        nvcompBatchedZstdDecompressOpts_t decomp_opts = {};
         status = nvcompBatchedZstdDecompressAsync(
             d_compressed_ptrs_gpu,
             compressed_sizes_gpu,
@@ -472,7 +483,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             impl_->d_temp_buffer,
             temp_size,
             d_decompressed_ptrs_gpu,
-            opts,  // options struct
+            decomp_opts,  // options struct
             nullptr,  // statuses_out
             0
         );
