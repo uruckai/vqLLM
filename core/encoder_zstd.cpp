@@ -42,8 +42,8 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             err = cudaMemcpy(d_uncompressed, data, uncompressed_size, cudaMemcpyHostToDevice);
             if (err == cudaSuccess) {
                 // Get compressed size (nvCOMP 5.0 API)
+                // NOTE: nvcompBatchedZstdCompressOpts_t appears to be empty in nvCOMP 5.0
                 nvcompBatchedZstdCompressOpts_t opts = {};
-                opts.compression_level = compression_level_;
                 
                 size_t temp_size = 0;
                 size_t max_comp_size = 0;
@@ -58,16 +58,13 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                 );
                 
                 if (status == nvcompSuccess) {
+                    // nvcompBatchedZstdCompressGetTempSizeSync signature (nvCOMP 5.0):
+                    // (batch_size, max_uncompressed_chunk_bytes, opts, temp_bytes)
                     status = nvcompBatchedZstdCompressGetTempSizeSync(
-                        d_uncompressed_ptrs,
-                        uncompressed_sizes,
-                        max_comp_size,
-                        1,
-                        &temp_size,
-                        0,
+                        1,  // batch_size
+                        uncompressed_size,  // max_uncompressed_chunk_bytes
                         opts,
-                        nullptr,
-                        0
+                        &temp_size
                     );
                 }
                 
@@ -82,18 +79,23 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                     void* d_compressed_ptrs[1] = {d_compressed};
                     size_t compressed_sizes[1] = {0};
                     
-                    // Compress on GPU (nvCOMP 5.0 API)
+                    // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0):
+                    // (device_uncompressed_chunk_ptrs, device_uncompressed_chunk_bytes,
+                    //  max_compressed_chunk_bytes, batch_size,
+                    //  device_temp_ptr, temp_bytes,
+                    //  device_compressed_chunk_ptrs, device_compressed_chunk_bytes,
+                    //  opts, device_statuses, stream)
                     status = nvcompBatchedZstdCompressAsync(
                         d_uncompressed_ptrs,
                         uncompressed_sizes,
                         max_comp_size,
-                        1,
+                        1,  // batch_size
                         d_temp,
                         temp_size,
                         d_compressed_ptrs,
                         compressed_sizes,
                         opts,
-                        nullptr,  // statuses_out
+                        nullptr,  // device_statuses
                         0         // stream
                     );
                     
