@@ -10,8 +10,6 @@ cd /workspace/CodecLLM
 # Pull latest code
 echo ""
 echo "[1/5] Pulling latest code..."
-git fetch origin
-git reset --hard origin/main
 git pull
 
 # Rebuild

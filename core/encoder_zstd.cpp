@@ -48,9 +48,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                 size_t temp_size = 0;
                 size_t max_comp_size = 0;
                 
-                const void* d_uncompressed_ptrs[1] = {d_uncompressed};
-                size_t uncompressed_sizes[1] = {uncompressed_size};
-                
+                // Get max compressed size first
                 nvcompStatus_t status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
                     uncompressed_size,
                     opts,
@@ -58,14 +56,34 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                 );
                 
                 if (status == nvcompSuccess) {
+                    // Allocate GPU memory for pointer arrays (batched API requirement)
+                    const void* h_uncompressed_ptrs[1] = {d_uncompressed};
+                    size_t h_uncompressed_sizes[1] = {uncompressed_size};
+                    
+                    const void** d_uncompressed_ptrs = nullptr;
+                    size_t* d_uncompressed_sizes = nullptr;
+                    
+                    cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
+                    cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
+                    cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+                    cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+                    
                     // nvcompBatchedZstdCompressGetTempSizeSync signature (nvCOMP 5.0):
-                    // (batch_size, max_uncompressed_chunk_bytes, opts, temp_bytes)
+                    // (device_uncompressed_ptrs, device_uncompressed_sizes, num_chunks,
+                    //  max_compressed_chunk_bytes, opts, temp_bytes, ???, stream)
                     status = nvcompBatchedZstdCompressGetTempSizeSync(
-                        1,  // batch_size
-                        uncompressed_size,  // max_uncompressed_chunk_bytes
+                        d_uncompressed_ptrs,
+                        d_uncompressed_sizes,
+                        1,  // num_chunks
+                        max_comp_size,
                         opts,
-                        &temp_size
+                        &temp_size,
+                        0,  // unknown parameter
+                        0   // stream
                     );
+                    
+                    cudaFree((void*)d_uncompressed_ptrs);
+                    cudaFree(d_uncompressed_sizes);
                 }
                 
                 if (status == nvcompSuccess) {
@@ -76,24 +94,37 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                     cudaMalloc(&d_temp, temp_size);
                     cudaMalloc(&d_compressed, max_comp_size);
                     
-                    void* d_compressed_ptrs[1] = {d_compressed};
-                    size_t compressed_sizes[1] = {0};
+                    // Allocate GPU memory for pointer/size arrays
+                    const void* h_uncompressed_ptrs[1] = {d_uncompressed};
+                    size_t h_uncompressed_sizes[1] = {uncompressed_size};
+                    void* h_compressed_ptrs[1] = {d_compressed};
+                    size_t h_compressed_sizes[1] = {0};
                     
-                    // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0):
-                    // (device_uncompressed_chunk_ptrs, device_uncompressed_chunk_bytes,
-                    //  max_compressed_chunk_bytes, batch_size,
-                    //  device_temp_ptr, temp_bytes,
-                    //  device_compressed_chunk_ptrs, device_compressed_chunk_bytes,
-                    //  opts, device_statuses, stream)
+                    const void** d_uncompressed_ptrs = nullptr;
+                    size_t* d_uncompressed_sizes = nullptr;
+                    void** d_compressed_ptrs = nullptr;
+                    size_t* d_compressed_sizes = nullptr;
+                    
+                    cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
+                    cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
+                    cudaMalloc(&d_compressed_ptrs, sizeof(void*));
+                    cudaMalloc(&d_compressed_sizes, sizeof(size_t));
+                    
+                    cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+                    cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+                    cudaMemcpy(d_compressed_ptrs, h_compressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+                    cudaMemcpy(d_compressed_sizes, h_compressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+                    
+                    // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0)
                     status = nvcompBatchedZstdCompressAsync(
                         d_uncompressed_ptrs,
-                        uncompressed_sizes,
+                        d_uncompressed_sizes,
                         max_comp_size,
-                        1,  // batch_size
+                        1,  // num_chunks
                         d_temp,
                         temp_size,
                         d_compressed_ptrs,
-                        compressed_sizes,
+                        d_compressed_sizes,
                         opts,
                         nullptr,  // device_statuses
                         0         // stream
@@ -101,16 +132,26 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                     
                     cudaDeviceSynchronize();
                     
-                    if (status == nvcompSuccess && compressed_sizes[0] > 0) {
-                        // Copy compressed data back
-                        compressed_payload.resize(compressed_sizes[0]);
-                        cudaMemcpy(compressed_payload.data(), d_compressed, 
-                                 compressed_sizes[0], cudaMemcpyDeviceToHost);
-                        compressed_size = compressed_sizes[0];
+                    if (status == nvcompSuccess) {
+                        // Copy compressed size back
+                        size_t actual_compressed_size = 0;
+                        cudaMemcpy(&actual_compressed_size, d_compressed_sizes, sizeof(size_t), cudaMemcpyDeviceToHost);
+                        
+                        if (actual_compressed_size > 0) {
+                            // Copy compressed data back
+                            compressed_payload.resize(actual_compressed_size);
+                            cudaMemcpy(compressed_payload.data(), d_compressed, 
+                                     actual_compressed_size, cudaMemcpyDeviceToHost);
+                            compressed_size = actual_compressed_size;
+                        }
                     }
                     
                     cudaFree(d_temp);
                     cudaFree(d_compressed);
+                    cudaFree((void*)d_uncompressed_ptrs);
+                    cudaFree(d_uncompressed_sizes);
+                    cudaFree(d_compressed_ptrs);
+                    cudaFree(d_compressed_sizes);
                 }
             }
             cudaFree(d_uncompressed);
