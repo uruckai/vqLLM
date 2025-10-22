@@ -41,9 +41,9 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         if (err == cudaSuccess) {
             err = cudaMemcpy(d_uncompressed, data, uncompressed_size, cudaMemcpyHostToDevice);
             if (err == cudaSuccess) {
-                // Get compressed size
+                // Get compressed size (nvCOMP 5.0 API)
                 nvcompBatchedZstdCompressOpts_t opts = {};
-                opts.level = compression_level_;
+                opts.compression_level = compression_level_;
                 
                 size_t temp_size = 0;
                 size_t max_comp_size = 0;
@@ -51,18 +51,23 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                 const void* d_uncompressed_ptrs[1] = {d_uncompressed};
                 size_t uncompressed_sizes[1] = {uncompressed_size};
                 
-                nvcompStatus_t status = nvcompBatchedZstdCompressGetTempSize(
+                nvcompStatus_t status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
                     uncompressed_size,
-                    1,
                     opts,
-                    &temp_size
+                    &max_comp_size
                 );
                 
                 if (status == nvcompSuccess) {
-                    status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
-                        uncompressed_size,
+                    status = nvcompBatchedZstdCompressGetTempSizeSync(
+                        d_uncompressed_ptrs,
+                        uncompressed_sizes,
+                        max_comp_size,
+                        1,
+                        &temp_size,
+                        0,
                         opts,
-                        &max_comp_size
+                        nullptr,
+                        0
                     );
                 }
                 
@@ -77,7 +82,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                     void* d_compressed_ptrs[1] = {d_compressed};
                     size_t compressed_sizes[1] = {0};
                     
-                    // Compress on GPU
+                    // Compress on GPU (nvCOMP 5.0 API)
                     status = nvcompBatchedZstdCompressAsync(
                         d_uncompressed_ptrs,
                         uncompressed_sizes,
@@ -88,7 +93,8 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                         d_compressed_ptrs,
                         compressed_sizes,
                         opts,
-                        0
+                        nullptr,  // statuses_out
+                        0         // stream
                     );
                     
                     cudaDeviceSynchronize();
