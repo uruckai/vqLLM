@@ -30,7 +30,31 @@ print()
 
 # Try nvCOMP batched API manually
 cuda = ctypes.CDLL('libcudart.so')
-nvcomp = ctypes.CDLL('/workspace/nvcomp_install/lib/libnvcomp.so')
+
+# Find nvCOMP library
+import os
+nvcomp_paths = [
+    '/workspace/nvcomp_install/lib/libnvcomp.so',
+    '/usr/local/lib/libnvcomp.so',
+    '/usr/lib/libnvcomp.so',
+    'libnvcomp.so'
+]
+
+nvcomp_lib = None
+for path in nvcomp_paths:
+    try:
+        nvcomp_lib = ctypes.CDLL(path)
+        print(f"Found nvCOMP at: {path}")
+        break
+    except OSError:
+        continue
+
+if nvcomp_lib is None:
+    print("❌ Could not find nvCOMP library!")
+    print("Tried paths:", nvcomp_paths)
+    sys.exit(1)
+
+nvcomp = nvcomp_lib
 
 # Allocate GPU memory for compressed data
 d_compressed = ctypes.c_void_p()
