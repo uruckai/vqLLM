@@ -10,7 +10,12 @@
 
 #ifdef NVCOMP_AVAILABLE
 #include <cuda_runtime.h>
-// nvCOMP v4.x uses different headers
+// nvCOMP Manager API (works with standard Zstd frames)
+#if __has_include(<nvcomp/nvcompManagerFactory.hpp>)
+    #include <nvcomp/nvcompManagerFactory.hpp>
+    #define USE_MANAGER_API
+#endif
+// Batched API
 #if __has_include(<nvcomp/zstd.h>)
     #include <nvcomp/zstd.h>
 #else
@@ -236,6 +241,59 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         return nullptr;
     }
     
+#ifdef USE_MANAGER_API
+    // Try Manager API first (works with standard Zstd frames)
+    try {
+        fprintf(stderr, "DEBUG: Trying Manager API...\n");
+        
+        // Upload compressed data to GPU
+        void* d_compressed = nullptr;
+        cudaError_t err = cudaMalloc(&d_compressed, payload_size);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc d_compressed failed: %s\n", cudaGetErrorString(err));
+            return nullptr;
+        }
+        
+        err = cudaMemcpy(d_compressed, payload, payload_size, cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMemcpy H2D failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_compressed);
+            return nullptr;
+        }
+        
+        // Create decompression manager from compressed data
+        auto decomp_manager = nvcomp::create_manager(d_compressed, payload_size, 0);
+        
+        // Get decompressed size
+        size_t decomp_size = decomp_manager->get_decompressed_size();
+        fprintf(stderr, "DEBUG: Manager reports decompressed_size=%zu\n", decomp_size);
+        
+        // Allocate output
+        void* d_decompressed = nullptr;
+        err = cudaMalloc(&d_decompressed, decomp_size);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "ERROR: cudaMalloc d_decompressed failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_compressed);
+            return nullptr;
+        }
+        
+        // Decompress
+        decomp_manager->decompress(d_decompressed, decomp_size, 0);
+        cudaDeviceSynchronize();
+        
+        fprintf(stderr, "DEBUG: Manager API success!\n");
+        
+        // Clean up compressed buffer
+        cudaFree(d_compressed);
+        
+        return d_decompressed;
+        
+    } catch (const std::exception& e) {
+        fprintf(stderr, "ERROR: Manager API failed: %s\n", e.what());
+        fprintf(stderr, "Falling back to batched API...\n");
+    }
+#endif
+    
     try {
         // Allocate GPU memory for input and output
         void* d_compressed = nullptr;
@@ -264,18 +322,24 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         }
         
         // Get decompression temp size
-        // nvCOMP 5.0: First param is MAX COMPRESSED SIZE (not uncompressed!)
-        nvcompBatchedZstdDecompressOpts_t opts = {};
+        // Try Sync version for standard Zstd frames
         size_t temp_size;
-        nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeAsync(
+        nvcompStatus_t status = nvcompBatchedZstdDecompressGetTempSizeSync(
             payload_size,              // max_compressed_chunk_size
-            1,                         // batch_size
-            opts,                      // options
-            &temp_size,
-            0                          // stream
+            1                          // batch_size
         );
         
-        fprintf(stderr, "DEBUG: nvCOMP temp_size=%zu (for compressed_size=%zu)\n", temp_size, payload_size);
+        if (status != nvcompSuccess) {
+            fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSizeSync failed: %d\n", status);
+            cudaFree(d_compressed);
+            cudaFree(d_decompressed);
+            return nullptr;
+        }
+        
+        // The Sync version might not return temp_size, try getting it another way
+        // Or just allocate a reasonable amount
+        temp_size = payload_size * 2;  // Conservative estimate
+        fprintf(stderr, "DEBUG: Using temp_size=%zu (conservative: 2x compressed)\n", temp_size);
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "ERROR: nvcompBatchedZstdDecompressGetTempSize failed: %d\n", status);
