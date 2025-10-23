@@ -263,6 +263,13 @@ class CompressedLinear(torch.nn.Module):
         # Free nvCOMP's GPU buffer
         cudart.cudaFree(ctypes.c_void_p(gpu_ptr))
         
+        # DEBUG: Check decompressed INT8 values (first forward pass only)
+        if not hasattr(self, '_debug_done'):
+            int8_sample = weight_int8_gpu[0, :10].cpu().numpy()
+            print(f"[DEBUG FORWARD] First 10 INT8 values from decompressed weight: {int8_sample}")
+            print(f"[DEBUG FORWARD] Scale values for first row: {self.scale[0].item():.6f}")
+            self._debug_done = True
+        
         # Dequantize on GPU (no CPU involved!)
         # Per-channel: scale is a vector (one per output channel/row)
         # Convert to float first, THEN multiply by scale
