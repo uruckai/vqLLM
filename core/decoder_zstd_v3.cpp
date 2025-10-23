@@ -49,6 +49,27 @@ bool ZstdGPUDecoder::isAvailable() {
 #endif
 }
 
+bool ZstdGPUDecoder::parseHeader(const uint8_t* compressed_data, size_t compressed_size,
+                                  LayerHeaderZstd& header) {
+    if (compressed_size < sizeof(LayerHeaderZstd)) {
+        return false;
+    }
+    
+    memcpy(&header, compressed_data, sizeof(LayerHeaderZstd));
+    
+    // Validate magic number
+    if (header.magic != ZSTD_MAGIC) {
+        return false;
+    }
+    
+    // Validate version
+    if (header.version != ZSTD_VERSION) {
+        return false;
+    }
+    
+    return true;
+}
+
 bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compressed_size,
                                   int8_t* output, uint32_t& rows, uint32_t& cols) {
     // Parse header
