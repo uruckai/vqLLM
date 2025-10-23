@@ -5,13 +5,9 @@
 
 #include "decoder_zstd.h"
 #include "format_zstd.h"
-
-extern "C" {
-#include <zstd.h>
-}
-
 #include <stdexcept>
 #include <cstring>
+#include <zstd.h>
 
 // Define simplified header for now
 #define ZSTD_LAYER_MAGIC 0x5A535444
