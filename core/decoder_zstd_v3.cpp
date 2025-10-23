@@ -7,9 +7,8 @@
 #include "format_zstd.h"
 #include <stdexcept>
 #include <cstring>
-
-#define ZSTD_STATIC_LINKING_ONLY
 #include <zstd.h>
+#include <zstd_errors.h>
 
 // Define simplified header for now
 #define ZSTD_LAYER_MAGIC 0x5A535444
