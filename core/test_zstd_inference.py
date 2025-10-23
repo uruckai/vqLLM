@@ -152,8 +152,23 @@ print()
 # Replace layers with compressed versions
 print("[5/6] Creating compressed model...")
 
+# Global counter for tracking forward passes
+_forward_pass_counter = 0
+_decompress_counter = 0
+
+def increment_forward_pass():
+    """Call this at the start of each forward pass (token generation)"""
+    global _forward_pass_counter
+    _forward_pass_counter += 1
+    return _forward_pass_counter
+
+def increment_decompress_counter():
+    """Track total decompressions"""
+    global _decompress_counter
+    _decompress_counter += 1
+
 class CompressedLinear(torch.nn.Module):
-    """Linear layer that decompresses weights on-the-fly (no caching!)"""
+    """Linear layer with per-forward-pass caching for speed"""
     
     def __init__(self, original_module, compressed_data, decoder_handle, target_device='cuda'):
         super().__init__()
@@ -180,28 +195,34 @@ class CompressedLinear(torch.nn.Module):
         else:
             self.bias = None
         
-        # NO CACHING - decompress fresh every time!
+        # Per-forward-pass cache
+        self._cached_forward_pass_id = None
+        self._cached_weight = None
     
     def forward(self, x):
-        """Decompress on-the-fly, use once, then immediately free"""
-        # Decompress to CPU (nvCOMP does GPU decode internally)
-        weight_int8 = self.decoder.decode_layer(self.compressed)
-        weight_float = weight_int8.astype(np.float32) * self.scale
-        weight_tensor = torch.from_numpy(weight_float).to(self.dtype).reshape(self.shape)
+        """Decompress once per forward pass, reuse within that pass"""
+        global _forward_pass_counter
         
-        # Move to GPU
-        weight_gpu = weight_tensor.to(x.device)
+        # Check if we need to decompress (new forward pass)
+        if self._cached_forward_pass_id != _forward_pass_counter:
+            # New forward pass - decompress fresh
+            increment_decompress_counter()  # Track decompression
+            
+            weight_int8 = self.decoder.decode_layer(self.compressed)
+            weight_float = weight_int8.astype(np.float32) * self.scale
+            weight_tensor = torch.from_numpy(weight_float).to(self.dtype).reshape(self.shape)
+            
+            # Cache for this forward pass
+            self._cached_weight = weight_tensor.to(x.device)
+            self._cached_forward_pass_id = _forward_pass_counter
+            
+            # Clean up intermediate tensors
+            del weight_tensor
+            del weight_float
+            del weight_int8
         
-        # Use it ONCE
-        output = torch.nn.functional.linear(x, weight_gpu, self.bias)
-        
-        # FREE IMMEDIATELY!
-        del weight_gpu
-        del weight_tensor
-        del weight_float
-        del weight_int8
-        
-        return output
+        # Use cached weight (either just decompressed or from earlier in this forward pass)
+        return torch.nn.functional.linear(x, self._cached_weight, self.bias)
 
 # Replace layers
 def replace_linear_with_compressed(module, compressed_weights, decoder):
@@ -260,7 +281,16 @@ if torch.cuda.is_available():
 print(f"✓ Model ready with {deleted_count} compressed layers")
 print()
 
-# Pre-warm the cache: decompress all layers to GPU
+# Hook the model's forward pass to increment counter
+original_forward = model.forward
+
+def hooked_forward(*args, **kwargs):
+    """Increment forward pass counter before each model forward call"""
+    increment_forward_pass()
+    return original_forward(*args, **kwargs)
+
+model.forward = hooked_forward
+
 # Run compressed inference (on-the-fly decompression happens in forward()!)
 print("[6/6] Running compressed inference...")
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
@@ -311,6 +341,8 @@ with torch.no_grad():
 compressed_text = tokenizer.decode(outputs_compressed[0], skip_special_tokens=True)
 print(f"  Output: '{compressed_text}'")
 print(f"  Time: {t_compressed:.2f}s")
+print(f"  Forward passes: {_forward_pass_counter}")
+print(f"  Decompressions: {_decompress_counter}")
 
 # Check VRAM
 if torch.cuda.is_available():
@@ -334,6 +366,8 @@ print(f"  Time: {t_compressed:.2f}s ({t_compressed/t_baseline:.1f}x slower)")
 print(f"  VRAM: {compressed_vram:.2f} GB ({baseline_vram/compressed_vram:.2f}x reduction)")
 print(f"  Compression: {overall_ratio:.2f}x")
 print(f"  Compressed layers: {num_to_compress}/{len(linear_layers)}")
+print(f"  Forward passes: {_forward_pass_counter}")
+print(f"  Decompressions: {_decompress_counter} ({_decompress_counter/_forward_pass_counter:.1f} per forward pass)")
 print(f"  Output: '{compressed_text}'")
 print()
 
