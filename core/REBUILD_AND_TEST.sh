@@ -1,30 +1,48 @@
 #!/bin/bash
-# Rebuild and test nvCOMP 3.0.6 integration
-
-set -e
 
 echo "========================================="
-echo "Pulling latest changes..."
+echo "  REBUILD & TEST PIPELINE"
 echo "========================================="
-cd /workspace/CodecLLM
-git pull
-
 echo ""
-echo "========================================="
-echo "Rebuilding codec..."
-echo "========================================="
-cd core
-bash REBUILD_NVCOMP3.sh
 
-echo ""
-echo "========================================="
-echo "Running basic test..."
-echo "========================================="
+# Set library path for nvCOMP
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-python test_gpu_direct_simple.py
+
+cd /workspace/CodecLLM/core
+
+echo "[1/4] Cleaning old build..."
+rm -rf build
+mkdir -p build
+
+echo ""
+echo "[2/4] Building codec..."
+cd build
+cmake .. \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DNVCOMP_INCLUDE_DIR=/usr/local/include \
+  -DNVCOMP_LIBRARY=/usr/local/lib/libnvcomp.so
+
+make -j$(nproc)
+
+if [ $? -ne 0 ]; then
+    echo "❌ Build failed!"
+    exit 1
+fi
+
+echo ""
+echo "✓ Build complete!"
+echo ""
+
+cd ..
+
+echo "[3/4] Testing round-trip..."
+python test_roundtrip.py
+echo ""
+
+echo "[4/4] Testing LLM inference..."
+python test_zstd_inference.py
 
 echo ""
 echo "========================================="
-echo "✓ All done!"
+echo "  ALL TESTS COMPLETE"
 echo "========================================="
-
