@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <cstring>
 
-// Include CUDA/nvCOMP headers FIRST (before extern "C")
+// Include CUDA/nvCOMP headers first
 #ifdef NVCOMP_AVAILABLE
 #include <cuda_runtime.h>
 #if __has_include(<nvcomp/zstd.h>)
@@ -17,10 +17,8 @@
 #endif
 #endif
 
-// NOW wrap Zstd headers in extern "C" (after CUDA headers)
-extern "C" {
+// Zstd header has built-in extern "C" guards for C++, don't wrap it
 #include <zstd.h>
-}
 
 // Define simplified header for now
 #define ZSTD_LAYER_MAGIC 0x5A535444
