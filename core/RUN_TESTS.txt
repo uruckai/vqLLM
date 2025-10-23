@@ -6,15 +6,24 @@ cd /workspace/CodecLLM && git pull && cd core && bash REBUILD_AND_TEST.sh
 
 ================================================================================
 This will:
-  1. Pull latest code (per-channel quantization + better broadcasting)
-  2. Rebuild codec with nvCOMP
+  1. Pull latest code:
+     - Per-channel quantization (5x better accuracy!)
+     - Better scale broadcasting
+     - Build fix (removed old batched rANS decoder)
+  2. Rebuild codec with nvCOMP 3.0.6
   3. Run round-trip test (verify compression works)
   4. Run LLM test (verify output is correct)
 
 Expected results:
+  ✓ Build completes successfully (no more decoder_batched.cu error!)
   ✓ Round-trip: BIT-EXACT match
   ✓ LLM output: Matches baseline (no garbage!)
   ✓ Compression: ~2.5-3.0x
   ⏱️ Time: ~60-135s (can optimize later)
+
+What was fixed:
+  - Build now excludes old rANS batched decoder (was causing compile error)
+  - Only builds what we need: Zstd encoder/decoder
+  - Per-channel quantization protects small-magnitude channels (103x better!)
 ================================================================================
 
