@@ -121,6 +121,8 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     # This prevents garbage output from poorly-scaled channels
     scales = np.abs(weight).max(axis=1, keepdims=True) / 127.0
     scales = np.maximum(scales, 1e-8)  # Avoid division by zero
+    # CRITICAL: Cast scales to float32 explicitly (weight might be float16, but scales must be float32 for precision)
+    scales = scales.astype(np.float32)
     weight_int8 = np.clip(np.round(weight / scales), -127, 127).astype(np.int8)
     
     # Compress
@@ -144,7 +146,8 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
         'compressed': compressed,
         'shape': weight.shape,
         'scale': scales_to_store,
-        'dtype': weight.dtype,
+        'scale_dtype': scales_to_store.dtype,  # Store scale dtype separately
+        'dtype': weight.dtype,  # Original weight dtype
         'ratio': ratio
     }
     
