@@ -85,7 +85,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
 
         fprintf(stderr, "[ENCODER] Max compressed size: %zu\n", max_comp_size);
         
-        // Create a CUDA stream (maybe stream=0 isn't valid for nvCOMP 5.0?)
+        // Create a CUDA stream
         cudaStream_t stream;
         err = cudaStreamCreate(&stream);
         if (err != cudaSuccess) {
@@ -95,30 +95,25 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         }
         fprintf(stderr, "[ENCODER] Created CUDA stream: %p\n", stream);
 
-        // Prepare host pointer/size arrays for temp-size query
-        const void* h_uncompressed_ptrs[1] = {d_uncompressed};
-        size_t h_uncompressed_sizes[1] = {uncompressed_size};
-
-        // Debug: Print exactly what we're passing
-        fprintf(stderr, "[ENCODER] Calling GetTempSizeSync with:\n");
-        fprintf(stderr, "[ENCODER]   h_uncompressed_ptrs[0] = %p (device ptr)\n", h_uncompressed_ptrs[0]);
-        fprintf(stderr, "[ENCODER]   h_uncompressed_sizes[0] = %zu\n", h_uncompressed_sizes[0]);
-        fprintf(stderr, "[ENCODER]   num_chunks = 1\n");
+        // Try approach 1: Use the simplified API for getting temp size
+        // For nvCOMP 5.0, we should call GetTempSizeSync with just the max sizes, not actual pointers
+        fprintf(stderr, "[ENCODER] Calling GetTempSizeSync with simplified parameters\n");
+        fprintf(stderr, "[ENCODER]   batch_size = 1\n");
         fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes = %u\n", uncompressed_size);
         fprintf(stderr, "[ENCODER]   max_total_uncompressed_bytes = %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   stream = 0\n");
-        fprintf(stderr, "[ENCODER]   opts = {reserved[0]=%d}\n", (int)opts.reserved[0]);
+        fprintf(stderr, "[ENCODER]   stream = %p\n", stream);
         
-        // Query required temporary size (nvCOMP only needs metadata; device ptr not dereferenced)
+        // According to nvCOMP docs, for GetTempSizeSync we can pass NULL for pointer arrays
+        // because it only needs the maximum sizes to determine temp buffer requirements
         status = nvcompBatchedZstdCompressGetTempSizeSync(
-            reinterpret_cast<const void* const*>(h_uncompressed_ptrs),
-            reinterpret_cast<const size_t*>(h_uncompressed_sizes),
-            1,
-            uncompressed_size,
+            nullptr,  // device_uncompressed_chunk_ptrs - not needed for size query
+            nullptr,  // device_uncompressed_chunk_bytes - not needed for size query
+            1,        // batch_size
+            uncompressed_size,  // max_uncompressed_chunk_bytes
             opts,
             &temp_size,
-            uncompressed_size,
-            stream  // Use actual stream instead of 0
+            uncompressed_size,  // max_total_uncompressed_bytes
+            stream
         );
 
         fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d, temp_size=%zu\n", status, temp_size);
