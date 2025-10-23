@@ -131,7 +131,8 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     compress_time += time.time() - t0
     
     # Store (scales is now a vector, one per output channel)
-    scales_to_store = scales.squeeze()  # Store as 1D array
+    # CRITICAL: Make a COPY to prevent in-place modification in subsequent loop iterations!
+    scales_to_store = scales.squeeze().copy()
     
     # DEBUG: Verify what we're storing (AFTER compression succeeds)
     if i == 0:
