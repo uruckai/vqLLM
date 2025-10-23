@@ -33,13 +33,10 @@ sudo rm -rf /workspace/nvcomp 2>/dev/null || true
 sudo rm -rf /usr/local/lib/libnvcomp* 2>/dev/null || true
 sudo rm -rf /usr/local/include/nvcomp* 2>/dev/null || true
 
-# Step 3: Clone nvCOMP - we need the examples repo which has the build system
+# Step 3: Clone nvCOMP
 echo ""
 echo "[3/6] Cloning nvCOMP repository..."
 cd /workspace
-
-# The NVIDIA/nvcomp repo IS the correct one, but v3.0.1 has a circular dependency
-# We need to build it without the find_package check
 git clone https://github.com/NVIDIA/nvcomp.git
 cd nvcomp
 
@@ -52,17 +49,12 @@ git checkout v3.0.1
 echo "Verifying checkout..."
 git log -1 --oneline
 
-# Step 5: Patch CMakeLists.txt to remove circular dependency
+# Step 5: Build
 echo ""
-echo "[5/6] Patching build system..."
-# Comment out the find_package(nvcomp) line that causes circular dependency
-sed -i 's/^find_package(nvcomp/#find_package(nvcomp/' CMakeLists.txt
-
-echo "Building nvCOMP 3.0.1..."
+echo "[5/6] Building nvCOMP 3.0.1..."
 mkdir -p build
 cd build
 
-# Build as a standalone library
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -73,10 +65,7 @@ cmake .. \
 
 echo ""
 echo "Compiling (this may take a few minutes)..."
-make -j$(nproc) 2>&1 | tee build.log || {
-    echo "❌ Build failed! Check build.log for details"
-    exit 1
-}
+make -j$(nproc)
 
 # Step 6: Install
 echo ""
