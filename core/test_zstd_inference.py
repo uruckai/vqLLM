@@ -191,13 +191,21 @@ class CompressedLinear(torch.nn.Module):
         # Convert scale to torch tensor on GPU (per-channel or per-tensor)
         scale_np = compressed_data['scale']
         if isinstance(scale_np, np.ndarray):
+            # DEBUG: Check what we received
+            print(f"[DEBUG LOAD] Received scale_np:")
+            print(f"  Type: {type(scale_np)}")
+            print(f"  Shape: {scale_np.shape}")
+            print(f"  Dtype: {scale_np.dtype}")
+            print(f"  Range: [{scale_np.min():.6f}, {scale_np.max():.6f}]")
+            print(f"  First 5 values: {scale_np[:5]}")
+            
             # Per-channel quantization (1D array)
             scale_tensor = torch.from_numpy(scale_np).to(torch_dtype).to(target_device)
             # DEBUG: Verify scales are reasonable
             if scale_tensor.numel() < 10:
-                print(f"[DEBUG] Scale values: {scale_tensor.cpu().numpy()}")
+                print(f"[DEBUG] After torch conversion: {scale_tensor.cpu().numpy()}")
             else:
-                print(f"[DEBUG] Scale shape: {scale_tensor.shape}, range: [{scale_tensor.min():.6f}, {scale_tensor.max():.6f}]")
+                print(f"[DEBUG] After torch conversion: shape={scale_tensor.shape}, range=[{scale_tensor.min():.6f}, {scale_tensor.max():.6f}]")
             self.register_buffer('scale', scale_tensor)
         else:
             # Per-tensor quantization (scalar) - legacy support
