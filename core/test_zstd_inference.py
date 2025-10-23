@@ -127,8 +127,19 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     
     # Compress
     t0 = time.time()
-    compressed, ratio = encoder.encode_layer(weight_int8)
+    encode_result = encoder.encode_layer(weight_int8)
     compress_time += time.time() - t0
+    
+    # CRITICAL: encoder returns (compressed_bytes, ratio) - unpack it!
+    compressed, ratio = encode_result
+    
+    # DEBUG: Verify compressed is bytes, not tuple
+    if i == 0:
+        print(f"\n[DEBUG COMPRESS PRE-STORE] Layer '{name}':")
+        print(f"  encode_result type: {type(encode_result)}")
+        print(f"  compressed type: {type(compressed)}")
+        print(f"  compressed length: {len(compressed) if isinstance(compressed, bytes) else 'N/A'}")
+        print(f"  ratio: {ratio}")
     
     # Store (scales is now a vector, one per output channel)
     # CRITICAL: Make a COPY to prevent in-place modification in subsequent loop iterations!
@@ -136,7 +147,6 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     
     # DEBUG: Verify what we're storing (AFTER compression succeeds)
     if i == 0:
-        print(f"\n[DEBUG COMPRESS] Layer '{name}':")
         print(f"  Weight shape: {weight.shape}, dtype: {weight.dtype}")
         print(f"  Scales shape BEFORE squeeze: {scales.shape}, dtype: {scales.dtype}")
         print(f"  Scales AFTER squeeze: shape={scales_to_store.shape}, dtype={scales_to_store.dtype}")
