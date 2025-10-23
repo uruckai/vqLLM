@@ -129,8 +129,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
             throw std::runtime_error("Stream creation failed");
         }
         
-        // Decompress! (v3.0.6 API)
-        // nvCOMP 3.0.6 signature:
+        // Decompress! (v3.0.6 API - includes device_statuses parameter)
         // nvcompStatus_t nvcompBatchedZstdDecompressAsync(
         //     const void* const* device_compressed_ptrs,
         //     const size_t* device_compressed_bytes,
@@ -140,6 +139,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
         //     void* device_temp_ptr,
         //     size_t temp_bytes,
         //     void* const* device_uncompressed_ptrs,
+        //     nvcompStatus_t* device_statuses,
         //     cudaStream_t stream);
         status = nvcompBatchedZstdDecompressAsync(
             h_compressed_ptrs,              // const void* const* (host array of device pointers)
@@ -150,6 +150,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
             d_temp,                         // device_temp_ptr
             temp_size,                      // temp_bytes
             h_uncompressed_ptrs,            // void* const* (host array of device pointers)
+            nullptr,                        // device_statuses (optional)
             stream);                        // cudaStream_t
         
         if (status != nvcompSuccess) {
@@ -282,10 +283,11 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             return nullptr;
         }
         
-        // Decompress
+        // Decompress (with device_statuses parameter)
         status = nvcompBatchedZstdDecompressAsync(
             h_compressed_ptrs, h_compressed_sizes, h_uncompressed_sizes,
-            h_actual_sizes, 1, d_temp, temp_size, h_uncompressed_ptrs, stream);
+            h_actual_sizes, 1, d_temp, temp_size, h_uncompressed_ptrs, 
+            nullptr, stream);  // device_statuses, stream
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "[DECODER] GPU decompress failed: %d\n", status);
