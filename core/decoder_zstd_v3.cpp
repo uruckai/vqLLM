@@ -8,6 +8,16 @@
 #include <stdexcept>
 #include <cstring>
 
+// Include CUDA/nvCOMP headers FIRST (before extern "C")
+#ifdef NVCOMP_AVAILABLE
+#include <cuda_runtime.h>
+#if __has_include(<nvcomp/zstd.h>)
+    #include <nvcomp/zstd.h>
+    #define USE_NVCOMP_ZSTD
+#endif
+#endif
+
+// NOW wrap Zstd headers in extern "C" (after CUDA headers)
 extern "C" {
 #include <zstd.h>
 }
@@ -22,14 +32,6 @@ struct ZstdLayerHeader {
     uint32_t payload_size;
     uint8_t dtype;
 } __attribute__((packed));
-
-#ifdef NVCOMP_AVAILABLE
-#include <cuda_runtime.h>
-#if __has_include(<nvcomp/zstd.h>)
-    #include <nvcomp/zstd.h>
-    #define USE_NVCOMP_ZSTD
-#endif
-#endif
 
 namespace codec {
 
