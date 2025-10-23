@@ -5,7 +5,11 @@
 
 #include "encoder_zstd.h"
 #include "format_zstd.h"
+
+extern "C" {
 #include <zstd.h>
+}
+
 #include <stdexcept>
 #include <cstring>
 
