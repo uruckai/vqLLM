@@ -207,6 +207,7 @@ print()
 
 # Replace layers with compressed versions
 print("[5/6] Creating compressed model...")
+import traceback
 
 class CompressedLinear(torch.nn.Module):
     """Linear layer that decompresses weights on-the-fly (no caching!)"""
@@ -388,8 +389,14 @@ def replace_linear_with_compressed(module, compressed_weights, decoder):
                         print(f"  First 5: {scale_data[:5]}\n")
                     
                     # Replace with compressed version (will decompress to GPU later)
-                    compressed_layer = CompressedLinear(child, compressed_data, decoder, target_device=device)
-                    setattr(module, name, compressed_layer)
+                    try:
+                        compressed_layer = CompressedLinear(child, compressed_data, decoder, target_device=device)
+                        setattr(module, name, compressed_layer)
+                        print(f"[REPLACE] Successfully replaced layer: {compressed_name}")
+                    except Exception as e:
+                        print(f"[ERROR] Failed to create CompressedLinear for {compressed_name}: {e}")
+                        traceback.print_exc()
+                        raise
                     break
         else:
             # Recursive replacement
