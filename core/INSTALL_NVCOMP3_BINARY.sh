@@ -41,10 +41,23 @@ echo ""
 echo "[4/5] Extracting..."
 tar -xzf nvcomp_3.0.6_x86_64_12.x.tgz
 
+echo "Contents extracted:"
+ls -la | grep nvcomp
+
 # Step 5: Install
 echo ""
 echo "[5/5] Installing to /usr/local..."
-cd nvcomp_3.0.6_x86_64_12.x
+# Find the extracted directory (it might be named differently)
+NVCOMP_DIR=$(find . -maxdepth 1 -type d -name "nvcomp*" ! -name "nvcomp_install" | head -1)
+if [ -z "$NVCOMP_DIR" ]; then
+    echo "❌ Could not find extracted nvcomp directory!"
+    echo "Listing current directory:"
+    ls -la
+    exit 1
+fi
+
+echo "Found directory: $NVCOMP_DIR"
+cd "$NVCOMP_DIR"
 
 # Copy libraries
 sudo cp -r lib/* /usr/local/lib/
