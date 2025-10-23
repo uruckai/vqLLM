@@ -138,13 +138,26 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             throw std::runtime_error("Failed to copy size to device");
         }
         
+        fprintf(stderr, "[ENCODER] ========================================\n");
         fprintf(stderr, "[ENCODER] Calling GetTempSizeSync with device arrays\n");
-        fprintf(stderr, "[ENCODER]   d_uncompressed_ptrs = %p (points to %p)\n", d_uncompressed_ptrs, d_uncompressed);
-        fprintf(stderr, "[ENCODER]   d_uncompressed_sizes = %p (value: %u)\n", d_uncompressed_sizes, uncompressed_size);
-        fprintf(stderr, "[ENCODER]   num_chunks = 1\n");
-        fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes = %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   max_total_uncompressed_bytes = %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   stream = %p\n", stream);
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        fprintf(stderr, "[ENCODER]   Parameter 1 (device_uncompressed_chunk_ptrs): %p (device ptr)\n", d_uncompressed_ptrs);
+        fprintf(stderr, "[ENCODER]     -> Points to device ptr: %p\n", d_uncompressed);
+        fprintf(stderr, "[ENCODER]   Parameter 2 (device_uncompressed_chunk_bytes): %p (device ptr)\n", d_uncompressed_sizes);
+        fprintf(stderr, "[ENCODER]     -> Contains value: %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   Parameter 3 (num_chunks): 1\n");
+        fprintf(stderr, "[ENCODER]   Parameter 4 (max_uncompressed_chunk_bytes): %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   Parameter 5 (compress_opts): {reserved[0]=%d}\n", (int)opts.reserved[0]);
+        fprintf(stderr, "[ENCODER]   Parameter 6 (temp_bytes): %p (output)\n", &temp_size);
+        fprintf(stderr, "[ENCODER]   Parameter 7 (max_total_uncompressed_bytes): %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   Parameter 8 (stream): %p\n", stream);
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        
+        // Verify device memory is accessible
+        cudaError_t peek_err = cudaGetLastError();
+        if (peek_err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ CUDA error before GetTempSizeSync: %s\n", cudaGetErrorString(peek_err));
+        }
         
         // Now call with proper device pointers
         status = nvcompBatchedZstdCompressGetTempSizeSync(
@@ -158,7 +171,25 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             stream
         );
 
-        fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d, temp_size=%zu\n", status, temp_size);
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        fprintf(stderr, "[ENCODER] GetTempSizeSync RESULT:\n");
+        fprintf(stderr, "[ENCODER]   status = %d", status);
+        switch(status) {
+            case 0: fprintf(stderr, " (nvcompSuccess)"); break;
+            case 1: fprintf(stderr, " (nvcompErrorInvalidValue)"); break;
+            case 2: fprintf(stderr, " (nvcompErrorNotSupported)"); break;
+            case 3: fprintf(stderr, " (nvcompErrorCannotDecompress)"); break;
+            case 4: fprintf(stderr, " (nvcompErrorBadChecksum)"); break;
+            case 10: fprintf(stderr, " (nvcompErrorInvalidValue - CHECK PARAMS!)"); break;
+            default: fprintf(stderr, " (UNKNOWN ERROR)"); break;
+        }
+        fprintf(stderr, "\n");
+        fprintf(stderr, "[ENCODER]   temp_size = %zu bytes", temp_size);
+        if (temp_size > 0) {
+            fprintf(stderr, " (%.2f MB)", temp_size / 1024.0 / 1024.0);
+        }
+        fprintf(stderr, "\n");
+        fprintf(stderr, "[ENCODER] ========================================\n");
         
         // Try to get more error info from CUDA
         cudaError_t cuda_err = cudaGetLastError();
@@ -275,12 +306,38 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         void* h_compressed_ptrs[1] = {d_compressed};
         size_t h_compressed_sizes[1] = {0};
 
-        cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs_device, sizeof(void*), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes_device, sizeof(size_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_compressed_ptrs, h_compressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_compressed_sizes, h_compressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+        err = cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs_device, sizeof(void*), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ cudaMemcpy d_uncompressed_ptrs failed: %s\n", cudaGetErrorString(err));
+        }
+        err = cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes_device, sizeof(size_t), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ cudaMemcpy d_uncompressed_sizes failed: %s\n", cudaGetErrorString(err));
+        }
+        err = cudaMemcpy(d_compressed_ptrs, h_compressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ cudaMemcpy d_compressed_ptrs failed: %s\n", cudaGetErrorString(err));
+        }
+        err = cudaMemcpy(d_compressed_sizes, h_compressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ cudaMemcpy d_compressed_sizes failed: %s\n", cudaGetErrorString(err));
+        }
 
-        fprintf(stderr, "[ENCODER] Calling nvcompBatchedZstdCompressAsync...\n");
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        fprintf(stderr, "[ENCODER] Calling nvcompBatchedZstdCompressAsync\n");
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        fprintf(stderr, "[ENCODER]   device_uncompressed_chunk_ptrs: %p -> {%p}\n", d_uncompressed_ptrs, d_uncompressed);
+        fprintf(stderr, "[ENCODER]   device_uncompressed_chunk_bytes: %p -> {%u}\n", d_uncompressed_sizes, uncompressed_size);
+        fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes: %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   num_chunks: 1\n");
+        fprintf(stderr, "[ENCODER]   device_temp_ptr: %p (size: %zu)\n", d_temp, temp_size);
+        fprintf(stderr, "[ENCODER]   temp_bytes: %zu\n", temp_size);
+        fprintf(stderr, "[ENCODER]   device_compressed_chunk_ptrs: %p -> {%p}\n", d_compressed_ptrs, d_compressed);
+        fprintf(stderr, "[ENCODER]   device_compressed_chunk_bytes: %p\n", d_compressed_sizes);
+        fprintf(stderr, "[ENCODER]   compress_opts: {reserved[0]=%d}\n", (int)opts.reserved[0]);
+        fprintf(stderr, "[ENCODER]   device_statuses: nullptr (no status tracking)\n");
+        fprintf(stderr, "[ENCODER]   stream: %p\n", stream);
+        fprintf(stderr, "[ENCODER] ========================================\n");
         
         // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0):
         // (device_uncompressed_chunk_ptrs, device_uncompressed_chunk_bytes,
@@ -298,11 +355,29 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             d_compressed_sizes,
             opts,
             nullptr,  // device_statuses
-            0         // stream
+            stream    // Use the actual stream, not 0
         );
         
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        fprintf(stderr, "[ENCODER] CompressAsync RESULT:\n");
+        fprintf(stderr, "[ENCODER]   status = %d", status);
+        switch(status) {
+            case 0: fprintf(stderr, " (nvcompSuccess ✓)"); break;
+            case 1: fprintf(stderr, " (nvcompErrorInvalidValue)"); break;
+            case 2: fprintf(stderr, " (nvcompErrorNotSupported)"); break;
+            case 10: fprintf(stderr, " (nvcompErrorInvalidValue - CHECK PARAMS!)"); break;
+            default: fprintf(stderr, " (ERROR CODE %d)", status); break;
+        }
+        fprintf(stderr, "\n");
+        fprintf(stderr, "[ENCODER] ========================================\n");
+        
+        cudaError_t compress_cuda_err = cudaGetLastError();
+        if (compress_cuda_err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ CUDA error after CompressAsync: %s\n", cudaGetErrorString(compress_cuda_err));
+        }
+        
         if (status != nvcompSuccess) {
-            fprintf(stderr, "[ENCODER] nvcompBatchedZstdCompressAsync failed: %d\n", status);
+            fprintf(stderr, "[ENCODER] ✗ nvcompBatchedZstdCompressAsync FAILED\n");
             cudaFree(d_temp_raw);
             cudaFree(d_compressed_raw);
             cudaFree((void*)d_uncompressed_ptrs);
@@ -313,8 +388,12 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             throw std::runtime_error("Compression failed");
         }
                     
-        cudaDeviceSynchronize();
-        fprintf(stderr, "[ENCODER] Compression complete, retrieving size...\n");
+        fprintf(stderr, "[ENCODER] Synchronizing device...\n");
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] ⚠ cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
+        }
+        fprintf(stderr, "[ENCODER] ✓ Compression complete, retrieving size...\n");
         
         // Copy compressed size back
         size_t actual_compressed_size = 0;
