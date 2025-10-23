@@ -19,6 +19,7 @@ if(NOT ZSTD_FOUND)
         PATHS
         /usr/include
         /usr/local/include
+        NO_DEFAULT_PATH
     )
     find_library(ZSTD_LIBRARY
         NAMES zstd libzstd
@@ -26,7 +27,17 @@ if(NOT ZSTD_FOUND)
         /usr/lib
         /usr/lib/x86_64-linux-gnu
         /usr/local/lib
+        NO_DEFAULT_PATH
     )
+    
+    # If not found with NO_DEFAULT_PATH, try system defaults
+    if(NOT ZSTD_INCLUDE_DIR)
+        find_path(ZSTD_INCLUDE_DIR zstd.h)
+    endif()
+    if(NOT ZSTD_LIBRARY)
+        find_library(ZSTD_LIBRARY NAMES zstd libzstd)
+    endif()
+    
     if(ZSTD_INCLUDE_DIR AND ZSTD_LIBRARY)
         set(ZSTD_FOUND TRUE)
         set(ZSTD_INCLUDE_DIRS ${ZSTD_INCLUDE_DIR})
