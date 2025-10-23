@@ -261,8 +261,21 @@ class CompressedLinear(torch.nn.Module):
             print(f"[DEBUG DECOMPRESS] Compressed data info:")
             print(f"  Type: {type(self.compressed)}")
             print(f"  Length: {len(self.compressed)} bytes")
-            print(f"  First 20 bytes: {self.compressed[:20]}")
+            print(f"  First 40 bytes (hex): {self.compressed[:40].hex()}")
             print(f"  Expected shape: {self.shape}")
+            
+            # Parse header manually to verify
+            import struct
+            if len(self.compressed) >= 24:  # Size of ZstdLayerHeader
+                magic, rows, cols, uncomp_size, payload_size, dtype = struct.unpack('<IIIIIB', self.compressed[:21])
+                print(f"  Header parsed:")
+                print(f"    Magic: 0x{magic:08x} (should be 0x5A535444)")
+                print(f"    Rows: {rows}, Cols: {cols}")
+                print(f"    Uncompressed size: {uncomp_size}")
+                print(f"    Payload size: {payload_size}")
+                print(f"    Dtype: {dtype}")
+                print(f"    Header + payload size: {21 + payload_size} (actual: {len(self.compressed)})")
+            
             self._debug_compressed = True
         
         # GPU-DIRECT DECODE: decompress directly to GPU memory
