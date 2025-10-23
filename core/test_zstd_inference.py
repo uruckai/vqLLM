@@ -216,7 +216,18 @@ class CompressedLinear(torch.nn.Module):
         
         # Dequantize on GPU (no CPU involved!)
         # Per-channel: scale is a vector (one per output channel/row)
-        weight_fp = weight_int8_gpu.to(self.dtype) * self.scale.unsqueeze(1)
+        # Convert to float first, THEN multiply by scale
+        weight_fp_unscaled = weight_int8_gpu.to(self.dtype)
+        
+        # Broadcast scale correctly: (rows,) -> (rows, 1) for broadcasting with (rows, cols)
+        if self.scale.dim() == 1:
+            # Per-channel: expand scale to (rows, 1)
+            scale_expanded = self.scale.view(-1, 1)
+        else:
+            # Per-tensor: scalar
+            scale_expanded = self.scale
+        
+        weight_fp = weight_fp_unscaled * scale_expanded
         
         # Reshape and use
         weight_fp = weight_fp.reshape(self.shape)
@@ -224,6 +235,7 @@ class CompressedLinear(torch.nn.Module):
         
         # FREE GPU memory
         del weight_fp
+        del weight_fp_unscaled
         del weight_int8_gpu
         
         return output
