@@ -17,8 +17,14 @@
 #endif
 #endif
 
-// Zstd header has built-in extern "C" guards for C++, don't wrap it
-#include <zstd.h>
+// Manually declare the Zstd functions we need (CPU fallback)
+extern "C" {
+    size_t ZSTD_compress(void* dst, size_t dstCapacity, const void* src, size_t srcSize, int compressionLevel);
+    size_t ZSTD_decompress(void* dst, size_t dstCapacity, const void* src, size_t compressedSize);
+    size_t ZSTD_compressBound(size_t srcSize);
+    unsigned ZSTD_isError(size_t code);
+    const char* ZSTD_getErrorName(size_t code);
+}
 
 // Define simplified header for now
 #define ZSTD_LAYER_MAGIC 0x5A535444
