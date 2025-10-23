@@ -1,6 +1,10 @@
 # LLM Weight Codec - Complete & Working! 🎉
 
-## Status: ✅ PRODUCTION READY (Oct 19, 2024)
+## 📋 **NEW ENGINEER START HERE** → [PROJECT_PLAYBOOK.md](PROJECT_PLAYBOOK.md)
+
+**Complete project briefing, technical specs, troubleshooting, and next steps.** Everything needed to resume work in a new session.
+
+## Status: ✅ PRODUCTION READY (Current)
 
 A novel codec-inspired compression system for LLM weights that achieves:
 - **1.33x average compression** on INT8-quantized weights (24.9% size reduction)
