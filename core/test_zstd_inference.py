@@ -123,16 +123,29 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     scales = np.maximum(scales, 1e-8)  # Avoid division by zero
     weight_int8 = np.clip(np.round(weight / scales), -127, 127).astype(np.int8)
     
+    # DEBUG: Verify scales before storing
+    if i == 0:
+        print(f"[DEBUG COMPRESS] Layer '{name}':")
+        print(f"  Weight shape: {weight.shape}, dtype: {weight.dtype}")
+        print(f"  Scales shape: {scales.shape}, range: [{scales.min():.6f}, {scales.max():.6f}]")
+        print(f"  After squeeze: {scales.squeeze().shape}")
+    
     # Compress
     t0 = time.time()
     compressed, ratio = encoder.encode_layer(weight_int8)
     compress_time += time.time() - t0
     
     # Store (scales is now a vector, one per output channel)
+    scales_to_store = scales.squeeze()  # Store as 1D array
+    
+    # DEBUG: Verify what we're storing
+    if i == 0:
+        print(f"  Storing scales: shape={scales_to_store.shape}, range=[{scales_to_store.min():.6f}, {scales_to_store.max():.6f}]")
+    
     compressed_weights[name] = {
         'compressed': compressed,
         'shape': weight.shape,
-        'scale': scales.squeeze(),  # Store as 1D array
+        'scale': scales_to_store,
         'dtype': weight.dtype,
         'ratio': ratio
     }
