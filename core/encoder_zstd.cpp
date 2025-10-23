@@ -95,84 +95,29 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         }
         fprintf(stderr, "[ENCODER] Created CUDA stream: %p\n", stream);
 
-        // nvCOMP 5.0 requires device-side pointer arrays for GetTempSizeSync
-        // Allocate device arrays for pointers and sizes
-        void** d_uncompressed_ptrs = nullptr;
-        size_t* d_uncompressed_sizes = nullptr;
-        
-        err = cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_ptrs failed: %s\n", cudaGetErrorString(err));
-            cudaStreamDestroy(stream);
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("Failed to allocate device pointer array");
-        }
-        
-        err = cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_sizes failed: %s\n", cudaGetErrorString(err));
-            cudaFree(d_uncompressed_ptrs);
-            cudaStreamDestroy(stream);
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("Failed to allocate device size array");
-        }
-        
-        // Copy pointer and size to device
-        err = cudaMemcpy(d_uncompressed_ptrs, &d_uncompressed, sizeof(void*), cudaMemcpyHostToDevice);
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaMemcpy pointer failed: %s\n", cudaGetErrorString(err));
-            cudaFree(d_uncompressed_sizes);
-            cudaFree(d_uncompressed_ptrs);
-            cudaStreamDestroy(stream);
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("Failed to copy pointer to device");
-        }
-        
-        err = cudaMemcpy(d_uncompressed_sizes, &uncompressed_size, sizeof(size_t), cudaMemcpyHostToDevice);
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaMemcpy size failed: %s\n", cudaGetErrorString(err));
-            cudaFree(d_uncompressed_sizes);
-            cudaFree(d_uncompressed_ptrs);
-            cudaStreamDestroy(stream);
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("Failed to copy size to device");
-        }
-        
+        // Try the ASYNC version which doesn't need device pointers!
+        // From the header: nvcompBatchedZstdCompressGetTempSizeAsync takes:
+        // (num_chunks, max_uncompressed_chunk_bytes, opts, temp_bytes, max_total_uncompressed_bytes)
         fprintf(stderr, "[ENCODER] ========================================\n");
-        fprintf(stderr, "[ENCODER] Calling GetTempSizeSync with device arrays\n");
+        fprintf(stderr, "[ENCODER] Trying GetTempSizeAsync (simpler API)\n");
         fprintf(stderr, "[ENCODER] ========================================\n");
-        fprintf(stderr, "[ENCODER]   Parameter 1 (device_uncompressed_chunk_ptrs): %p (device ptr)\n", d_uncompressed_ptrs);
-        fprintf(stderr, "[ENCODER]     -> Points to device ptr: %p\n", d_uncompressed);
-        fprintf(stderr, "[ENCODER]   Parameter 2 (device_uncompressed_chunk_bytes): %p (device ptr)\n", d_uncompressed_sizes);
-        fprintf(stderr, "[ENCODER]     -> Contains value: %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   Parameter 3 (num_chunks): 1\n");
-        fprintf(stderr, "[ENCODER]   Parameter 4 (max_uncompressed_chunk_bytes): %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   Parameter 5 (compress_opts): {reserved[0]=%d}\n", (int)opts.reserved[0]);
-        fprintf(stderr, "[ENCODER]   Parameter 6 (temp_bytes): %p (output)\n", &temp_size);
-        fprintf(stderr, "[ENCODER]   Parameter 7 (max_total_uncompressed_bytes): %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   Parameter 8 (stream): %p\n", stream);
+        fprintf(stderr, "[ENCODER]   num_chunks: 1\n");
+        fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes: %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   compress_opts: {reserved[0]=%d}\n", (int)opts.reserved[0]);
+        fprintf(stderr, "[ENCODER]   max_total_uncompressed_bytes: %u\n", uncompressed_size);
         fprintf(stderr, "[ENCODER] ========================================\n");
         
-        // Verify device memory is accessible
-        cudaError_t peek_err = cudaGetLastError();
-        if (peek_err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] ⚠ CUDA error before GetTempSizeSync: %s\n", cudaGetErrorString(peek_err));
-        }
-        
-        // Now call with proper device pointers
-        status = nvcompBatchedZstdCompressGetTempSizeSync(
-            (const void* const*)d_uncompressed_ptrs,
-            (const size_t*)d_uncompressed_sizes,
-            1,        // num_chunks
+        // Use the Async version which doesn't need actual data pointers
+        status = nvcompBatchedZstdCompressGetTempSizeAsync(
+            1,                  // num_chunks
             uncompressed_size,  // max_uncompressed_chunk_bytes
-            opts,
-            &temp_size,
-            uncompressed_size,  // max_total_uncompressed_bytes
-            stream
+            opts,               // compress_opts
+            &temp_size,         // temp_bytes (output)
+            uncompressed_size   // max_total_uncompressed_bytes
         );
 
         fprintf(stderr, "[ENCODER] ========================================\n");
-        fprintf(stderr, "[ENCODER] GetTempSizeSync RESULT:\n");
+        fprintf(stderr, "[ENCODER] GetTempSizeAsync RESULT:\n");
         fprintf(stderr, "[ENCODER]   status = %d", status);
         switch(status) {
             case 0: fprintf(stderr, " (nvcompSuccess)"); break;
@@ -196,16 +141,12 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         if (cuda_err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] CUDA error after GetTempSize: %s\n", cudaGetErrorString(cuda_err));
         }
-
-        // Clean up device arrays - we don't need them anymore
-        cudaFree(d_uncompressed_sizes);
-        cudaFree(d_uncompressed_ptrs);
         
         if (status != nvcompSuccess) {
-            fprintf(stderr, "[ENCODER] GetTempSizeSync failed: %d\n", status);
+            fprintf(stderr, "[ENCODER] GetTempSizeAsync failed: %d\n", status);
             cudaStreamDestroy(stream);
             cudaFree(d_uncompressed);
-            throw std::runtime_error("GetTempSizeSync failed");
+            throw std::runtime_error("GetTempSizeAsync failed");
         }
 
         fprintf(stderr, "[ENCODER] Temp size: %zu bytes\n", temp_size);
@@ -254,11 +195,12 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                 aligned_temp_size, aligned_max_comp_size);
 
         // Prepare pointer/size arrays in device memory for actual compression call
-        // Reuse the device arrays we allocated earlier, but now we need compressed arrays too
+        void** d_uncompressed_ptrs = nullptr;
+        size_t* d_uncompressed_sizes = nullptr;
         void** d_compressed_ptrs = nullptr;
         size_t* d_compressed_sizes = nullptr;
         
-        // Re-allocate the uncompressed arrays (we freed them after GetTempSizeSync)
+        // Allocate device arrays for pointers and sizes
         err = cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
         if (err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_ptrs failed: %s\n", cudaGetErrorString(err));
