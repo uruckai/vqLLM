@@ -48,24 +48,17 @@ else()
     message(STATUS "nvCOMP not found - Zstd will use CPU fallback")
 endif()
 
-# Source files (minimal set for Zstd)
+# Source files (including rANS for compatibility)
 set(SOURCES
     encoder_simple.cpp
     decoder_host.cpp
     rans.cpp
     c_api.cpp
+    encoder_batched.cpp
+    decoder_batched_cpu.cpp
+    decoder_batched.cpp
+    c_api_batched.cpp
 )
-
-# Add batched rANS files if requested (legacy, not needed for Zstd)
-option(BUILD_RANS_BATCHED "Build rANS batched encoder/decoder (legacy)" OFF)
-if(BUILD_RANS_BATCHED)
-    list(APPEND SOURCES
-        encoder_batched.cpp
-        decoder_batched_cpu.cpp
-        decoder_batched.cpp
-        c_api_batched.cpp
-    )
-endif()
 
 # Add Zstd files if Zstd is available
 if(ZSTD_FOUND)
@@ -83,8 +76,11 @@ set(CUDA_SOURCES
     decoder_gpu.cu
 )
 
-# Add batched CUDA decoder if rANS batched is enabled
-if(BUILD_RANS_BATCHED)
+# Note: decoder_batched.cu excluded due to compile errors
+# All rANS batched functionality works via CPU decoder (decoder_batched_cpu.cpp)
+# If you need GPU batched decode, set: cmake .. -DBUILD_GPU_BATCHED_DECODER=ON
+option(BUILD_GPU_BATCHED_DECODER "Build GPU batched decoder (has compile issues)" OFF)
+if(BUILD_GPU_BATCHED_DECODER)
     list(APPEND CUDA_SOURCES decoder_batched.cu)
 endif()
 
