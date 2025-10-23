@@ -1,0 +1,20 @@
+================================================================================
+COPY-PASTE THIS INTO RUNPOD
+================================================================================
+
+cd /workspace/CodecLLM && git pull && cd core && bash REBUILD_AND_TEST.sh
+
+================================================================================
+This will:
+  1. Pull latest code (per-channel quantization + better broadcasting)
+  2. Rebuild codec with nvCOMP
+  3. Run round-trip test (verify compression works)
+  4. Run LLM test (verify output is correct)
+
+Expected results:
+  ✓ Round-trip: BIT-EXACT match
+  ✓ LLM output: Matches baseline (no garbage!)
+  ✓ Compression: ~2.5-3.0x
+  ⏱️ Time: ~60-135s (can optimize later)
+================================================================================
+
