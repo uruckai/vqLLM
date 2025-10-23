@@ -31,7 +31,11 @@ if(NOT ZSTD_FOUND)
         set(ZSTD_FOUND TRUE)
         set(ZSTD_INCLUDE_DIRS ${ZSTD_INCLUDE_DIR})
         set(ZSTD_LIBRARIES ${ZSTD_LIBRARY})
-        message(STATUS "Zstd found manually: ${ZSTD_LIBRARY}")
+        message(STATUS "Zstd found manually:")
+        message(STATUS "  Library: ${ZSTD_LIBRARY}")
+        message(STATUS "  Include: ${ZSTD_INCLUDE_DIR}")
+    else()
+        message(WARNING "Zstd not found! Include: ${ZSTD_INCLUDE_DIR}, Library: ${ZSTD_LIBRARY}")
     endif()
 endif()
 
@@ -113,6 +117,8 @@ target_include_directories(codec_core PUBLIC
 
 if(ZSTD_FOUND)
     target_include_directories(codec_core PUBLIC ${ZSTD_INCLUDE_DIRS})
+    message(STATUS "Zstd include dirs: ${ZSTD_INCLUDE_DIRS}")
+    message(STATUS "Zstd libraries: ${ZSTD_LIBRARIES}")
 endif()
 
 if(NVCOMP_FOUND)
