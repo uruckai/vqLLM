@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd /workspace/CodecLLM
+git pull
 cd /workspace/CodecLLM/core
 
 echo "Testing GPU decode fix..."
