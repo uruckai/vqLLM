@@ -40,18 +40,18 @@ cd /workspace
 git clone https://github.com/NVIDIA/nvcomp.git
 cd nvcomp
 
-# Step 4: Checkout v3.0.6
+# Step 4: Checkout v3.0.1 (latest 3.x version)
 echo ""
-echo "[4/6] Checking out v3.0.6..."
+echo "[4/6] Checking out v3.0.1..."
 git fetch --all --tags
-git checkout tags/v3.0.6 -b v3.0.6-branch
+git checkout v3.0.1
 
 echo "Verifying checkout..."
 git log -1 --oneline
 
 # Step 5: Build
 echo ""
-echo "[5/6] Building nvCOMP 3.0.6..."
+echo "[5/6] Building nvCOMP 3.0.1..."
 mkdir -p build
 cd build
 
@@ -69,7 +69,7 @@ make -j$(nproc)
 
 # Step 6: Install
 echo ""
-echo "[6/6] Installing nvCOMP 3.0.6..."
+echo "[6/6] Installing nvCOMP 3.0.1..."
 sudo make install
 
 # Update library cache
@@ -106,6 +106,6 @@ echo "2. rm -rf build && mkdir build && cd build"
 echo "3. cmake .."
 echo "4. make -j\$(nproc)"
 echo "5. cd .."
-echo "6. bash test_nvcomp_versions.sh  # Test if v3.0.6 works"
+echo "6. bash test_nvcomp_versions.sh  # Test if v3.0.1 works"
 echo ""
 
