@@ -333,10 +333,10 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         size_t h_compressed_sizes[1] = {payload_size};
         size_t h_uncompressed_sizes[1] = {header.uncompressed_size};
         void* h_uncompressed_ptrs[1] = {d_uncompressed};
-        size_t h_actual_sizes[1] = {0};
         
-        cudaStream_t stream;
-        err = cudaStreamCreate(&stream);
+        // Allocate actual_sizes on device (nvCOMP 3.0.6 may need this)
+        size_t* d_actual_sizes = nullptr;
+        err = cudaMalloc(&d_actual_sizes, sizeof(size_t));
         if (err != cudaSuccess) {
             cudaFree(d_statuses);
             cudaFree(d_temp);
@@ -345,16 +345,28 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             return nullptr;
         }
         
-        // Decompress (with device_statuses parameter)
+        cudaStream_t stream;
+        err = cudaStreamCreate(&stream);
+        if (err != cudaSuccess) {
+            cudaFree(d_actual_sizes);
+            cudaFree(d_statuses);
+            cudaFree(d_temp);
+            cudaFree(d_uncompressed);
+            cudaFree(d_compressed);
+            return nullptr;
+        }
+        
+        // Decompress (with device pointers)
         status = nvcompBatchedZstdDecompressAsync(
             h_compressed_ptrs, h_compressed_sizes, h_uncompressed_sizes,
-            h_actual_sizes, 1, d_temp, temp_size, h_uncompressed_ptrs, 
-            d_statuses, stream);  // device_statuses, stream
+            d_actual_sizes, 1, d_temp, temp_size, h_uncompressed_ptrs, 
+            d_statuses, stream);  // device actual_sizes, device_statuses, stream
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "[DECODER] GPU decompress failed: %d\n", status);
             cudaStreamSynchronize(stream);
             cudaStreamDestroy(stream);
+            cudaFree(d_actual_sizes);
             cudaFree(d_statuses);
             cudaFree(d_temp);
             cudaFree(d_uncompressed);
@@ -368,13 +380,18 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         nvcompStatus_t h_status;
         err = cudaMemcpy(&h_status, d_statuses, sizeof(nvcompStatus_t), cudaMemcpyDeviceToHost);
         
+        // Copy actual size from device
+        size_t h_actual_size = 0;
+        cudaMemcpy(&h_actual_size, d_actual_sizes, sizeof(size_t), cudaMemcpyDeviceToHost);
+        
         // DEBUG: Always print status and sizes
         fprintf(stderr, "[DECODER DEBUG] nvcompStatus=%d, cudaErr=%d, actual_size=%zu, expected=%u\n", 
-                h_status, err, h_actual_sizes[0], header.uncompressed_size);
+                h_status, err, h_actual_size, header.uncompressed_size);
         
         if (err != cudaSuccess || h_status != nvcompSuccess) {
             fprintf(stderr, "[DECODER] GPU decompress status check failed: cudaErr=%d, nvcompStatus=%d\n", err, h_status);
             cudaStreamDestroy(stream);
+            cudaFree(d_actual_sizes);
             cudaFree(d_statuses);
             cudaFree(d_temp);
             cudaFree(d_uncompressed);
@@ -384,6 +401,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         
         cudaStreamDestroy(stream);
         cudaFree(d_statuses);
+        cudaFree(d_actual_sizes);
         cudaFree(d_temp);
         cudaFree(d_compressed);
         
