@@ -6,8 +6,10 @@ echo ""
 
 cat > /tmp/test_all_variations.cu << 'EOF'
 #include <stdio.h>
+#include <string.h>
 #include <cuda_runtime.h>
 #include <nvcomp/zstd.h>
+#include <nvcomp/lz4.h>
 
 int main() {
     printf("=== Test 1: GetTempSizeAsync with all combinations ===\n");
@@ -59,13 +61,15 @@ int main() {
     
     printf("\n=== Test 3: Check if opts needs initialization ===\n");
     {
+        size_t temp_size = 0;
+        
         // Try with uninitialized opts
         nvcompBatchedZstdCompressOpts_t bad_opts;
-        size_t temp_size = 0;
+        memset(&bad_opts, 0xFF, sizeof(bad_opts));  // Fill with garbage
         nvcompStatus_t status = nvcompBatchedZstdCompressGetTempSizeAsync(
             1, 65536, bad_opts, &temp_size, 65536
         );
-        printf("Uninitialized opts: status=%d\n", status);
+        printf("Garbage opts: status=%d\n", status);
         
         // Try with explicitly zeroed opts
         nvcompBatchedZstdCompressOpts_t zero_opts;
@@ -106,7 +110,6 @@ int main() {
     
     printf("\n=== Test 5: Try LZ4 instead of Zstd ===\n");
     {
-        #include <nvcomp/lz4.h>
         size_t temp_size = 0;
         nvcompBatchedLZ4Opts_t lz4_opts = nvcompBatchedLZ4DefaultOpts;
         nvcompStatus_t status = nvcompBatchedLZ4CompressGetTempSize(
@@ -117,6 +120,10 @@ int main() {
             printf("  ✓ LZ4 WORKS! nvCOMP is functional, just Zstd is broken.\n");
         }
     }
+    
+    printf("\n=== Summary ===\n");
+    printf("If all tests failed, nvCOMP 5.0 Zstd is likely broken.\n");
+    printf("Check NVCOMP_STATUS.md for recommendations.\n");
     
     cudaStreamDestroy(stream);
     return 0;
