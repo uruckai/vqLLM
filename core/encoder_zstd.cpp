@@ -84,11 +84,31 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         }
 
         fprintf(stderr, "[ENCODER] Max compressed size: %zu\n", max_comp_size);
+        
+        // Create a CUDA stream (maybe stream=0 isn't valid for nvCOMP 5.0?)
+        cudaStream_t stream;
+        err = cudaStreamCreate(&stream);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] cudaStreamCreate failed: %s\n", cudaGetErrorString(err));
+            cudaFree(d_uncompressed);
+            throw std::runtime_error("Stream creation failed");
+        }
+        fprintf(stderr, "[ENCODER] Created CUDA stream: %p\n", stream);
 
         // Prepare host pointer/size arrays for temp-size query
         const void* h_uncompressed_ptrs[1] = {d_uncompressed};
         size_t h_uncompressed_sizes[1] = {uncompressed_size};
 
+        // Debug: Print exactly what we're passing
+        fprintf(stderr, "[ENCODER] Calling GetTempSizeSync with:\n");
+        fprintf(stderr, "[ENCODER]   h_uncompressed_ptrs[0] = %p (device ptr)\n", h_uncompressed_ptrs[0]);
+        fprintf(stderr, "[ENCODER]   h_uncompressed_sizes[0] = %zu\n", h_uncompressed_sizes[0]);
+        fprintf(stderr, "[ENCODER]   num_chunks = 1\n");
+        fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes = %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   max_total_uncompressed_bytes = %u\n", uncompressed_size);
+        fprintf(stderr, "[ENCODER]   stream = 0\n");
+        fprintf(stderr, "[ENCODER]   opts = {reserved[0]=%d}\n", (int)opts.reserved[0]);
+        
         // Query required temporary size (nvCOMP only needs metadata; device ptr not dereferenced)
         status = nvcompBatchedZstdCompressGetTempSizeSync(
             reinterpret_cast<const void* const*>(h_uncompressed_ptrs),
@@ -98,10 +118,16 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
             opts,
             &temp_size,
             uncompressed_size,
-            0
+            stream  // Use actual stream instead of 0
         );
 
         fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d, temp_size=%zu\n", status, temp_size);
+        
+        // Try to get more error info from CUDA
+        cudaError_t cuda_err = cudaGetLastError();
+        if (cuda_err != cudaSuccess) {
+            fprintf(stderr, "[ENCODER] CUDA error after GetTempSize: %s\n", cudaGetErrorString(cuda_err));
+        }
 
         if (status != nvcompSuccess) {
             fprintf(stderr, "[ENCODER] GetTempSizeSync failed: %d\n", status);
