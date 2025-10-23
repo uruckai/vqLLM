@@ -282,6 +282,20 @@ class CompressedLinear(torch.nn.Module):
         # Create empty tensor on GPU
         weight_int8_gpu = torch.empty((rows, cols), dtype=torch.int8, device=x.device)
         
+        # DEBUG: Check what's actually on the GPU BEFORE copying
+        if not hasattr(self, '_debug_done'):
+            # Copy GPU data to CPU to verify it's not zeros
+            import ctypes as ctypes2
+            cudart2 = ctypes2.CDLL('libcudart.so')
+            test_cpu = np.empty(10, dtype=np.int8)
+            cudart2.cudaMemcpy(
+                test_cpu.ctypes.data_as(ctypes2.c_void_p),
+                ctypes2.c_void_p(gpu_ptr),
+                ctypes2.c_size_t(10),
+                ctypes2.c_int(2)  # cudaMemcpyDeviceToHost
+            )
+            print(f"[DEBUG FORWARD] First 10 INT8 values DIRECTLY from gpu_ptr (BEFORE copy): {test_cpu}")
+        
         # Copy from nvCOMP's GPU buffer to PyTorch's GPU buffer
         import ctypes
         cudart = ctypes.CDLL('libcudart.so')
@@ -292,13 +306,12 @@ class CompressedLinear(torch.nn.Module):
             ctypes.c_int(1)  # cudaMemcpyDeviceToDevice
         )
         
-        # Free nvCOMP's GPU buffer
+        # Free nvCOMP's GPU buffer (AFTER copying!)
         cudart.cudaFree(ctypes.c_void_p(gpu_ptr))
         
-        # DEBUG: Check decompressed INT8 values (first forward pass only)
+        # DEBUG: Check PyTorch tensor AFTER copy
         if not hasattr(self, '_debug_done'):
-            int8_sample = weight_int8_gpu[0, :10].cpu().numpy()
-            print(f"[DEBUG FORWARD] First 10 INT8 values from decompressed weight: {int8_sample}")
+            print(f"[DEBUG FORWARD] First 10 INT8 values from PyTorch tensor (AFTER copy): {weight_int8_gpu[0, :10].cpu().numpy()}")
             print(f"[DEBUG FORWARD] Scale values for first row: {self.scale[0].item():.6f}")
             self._debug_done = True
         
