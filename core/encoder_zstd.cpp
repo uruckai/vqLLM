@@ -140,7 +140,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         
         fprintf(stderr, "[ENCODER] Calling GetTempSizeSync with device arrays\n");
         fprintf(stderr, "[ENCODER]   d_uncompressed_ptrs = %p (points to %p)\n", d_uncompressed_ptrs, d_uncompressed);
-        fprintf(stderr, "[ENCODER]   d_uncompressed_sizes = %p (value: %zu)\n", d_uncompressed_sizes, uncompressed_size);
+        fprintf(stderr, "[ENCODER]   d_uncompressed_sizes = %p (value: %u)\n", d_uncompressed_sizes, uncompressed_size);
         fprintf(stderr, "[ENCODER]   num_chunks = 1\n");
         fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes = %u\n", uncompressed_size);
         fprintf(stderr, "[ENCODER]   max_total_uncompressed_bytes = %u\n", uncompressed_size);
@@ -223,11 +223,11 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
                 aligned_temp_size, aligned_max_comp_size);
 
         // Prepare pointer/size arrays in device memory for actual compression call
-        const void** d_uncompressed_ptrs = nullptr;
-        size_t* d_uncompressed_sizes = nullptr;
+        // Reuse the device arrays we allocated earlier, but now we need compressed arrays too
         void** d_compressed_ptrs = nullptr;
         size_t* d_compressed_sizes = nullptr;
-
+        
+        // Re-allocate the uncompressed arrays (we freed them after GetTempSizeSync)
         err = cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
         if (err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_ptrs failed: %s\n", cudaGetErrorString(err));
