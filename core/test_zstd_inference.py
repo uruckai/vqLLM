@@ -116,21 +116,23 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     # Get weight
     weight = module.weight.data.cpu().numpy()
     
-    # Quantize to int8
-    w_min, w_max = weight.min(), weight.max()
-    scale = max(abs(w_min), abs(w_max)) / 127.0
-    weight_int8 = np.clip(np.round(weight / scale), -127, 127).astype(np.int8)
+    # PER-CHANNEL QUANTIZATION (much better for LLMs!)
+    # Scale each output channel (row) independently
+    # Shape: (out_features, in_features) -> scales: (out_features, 1)
+    scales = np.abs(weight).max(axis=1, keepdims=True) / 127.0
+    scales = np.maximum(scales, 1e-8)  # Avoid division by zero
+    weight_int8 = np.clip(np.round(weight / scales), -127, 127).astype(np.int8)
     
     # Compress
     t0 = time.time()
     compressed, ratio = encoder.encode_layer(weight_int8)
     compress_time += time.time() - t0
     
-    # Store
+    # Store (scales is now a vector, not a scalar!)
     compressed_weights[name] = {
         'compressed': compressed,
         'shape': weight.shape,
-        'scale': scale,
+        'scale': scales.squeeze(),  # Store as 1D array
         'dtype': weight.dtype,
         'ratio': ratio
     }
@@ -159,7 +161,6 @@ class CompressedLinear(torch.nn.Module):
         super().__init__()
         self.compressed = compressed_data['compressed']
         self.shape = compressed_data['shape']
-        self.scale = compressed_data['scale']
         self.target_device = target_device
         
         # Convert numpy dtype to torch dtype
@@ -173,6 +174,15 @@ class CompressedLinear(torch.nn.Module):
         
         self.dtype = torch_dtype
         self.decoder = decoder_handle
+        
+        # Convert scale to torch tensor on GPU (per-channel or per-tensor)
+        scale_np = compressed_data['scale']
+        if isinstance(scale_np, np.ndarray):
+            # Per-channel quantization (1D array)
+            self.register_buffer('scale', torch.from_numpy(scale_np).to(torch_dtype).to(target_device))
+        else:
+            # Per-tensor quantization (scalar) - legacy support
+            self.register_buffer('scale', torch.tensor(scale_np, dtype=torch_dtype, device=target_device))
         
         # Keep bias if present
         if original_module.bias is not None:
@@ -205,7 +215,8 @@ class CompressedLinear(torch.nn.Module):
         cudart.cudaFree(ctypes.c_void_p(gpu_ptr))
         
         # Dequantize on GPU (no CPU involved!)
-        weight_fp = weight_int8_gpu.to(self.dtype) * self.scale
+        # Per-channel: scale is a vector (one per output channel/row)
+        weight_fp = weight_int8_gpu.to(self.dtype) * self.scale.unsqueeze(1)
         
         # Reshape and use
         weight_fp = weight_fp.reshape(self.shape)
