@@ -55,22 +55,13 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         
         fprintf(stderr, "[ENCODER] Data uploaded to GPU\n");
         
-        // Get cap on compressed size (nvCOMP 5.0 API)
-        nvcompBatchedZstdCompressOpts_t opts = nvcompBatchedZstdCompressDefaultOpts;
-
-        nvcompAlignmentRequirements_t align_req{};
-        nvcompStatus_t status_align = nvcompBatchedZstdCompressGetRequiredAlignments(opts, &align_req);
-        if (status_align == nvcompSuccess) {
-            fprintf(stderr, "[ENCODER] Alignment requirements: input=%zu, temp=%zu, output=%zu\n",
-                   align_req.input, align_req.temp, align_req.output);
-        } else {
-            fprintf(stderr, "[ENCODER] WARNING: Failed to query alignments: %d\n", status_align);
-        }
+        // nvCOMP 3.0.6 API
+        nvcompBatchedZstdOpts_t opts = nvcompBatchedZstdDefaultOpts;
 
         size_t temp_size = 0;
         size_t max_comp_size = 0;
 
-        // Get max compressed size first
+        // Get max compressed size first (same API in v3)
         nvcompStatus_t status = nvcompBatchedZstdCompressGetMaxOutputChunkSize(
             uncompressed_size,
             opts,
@@ -85,69 +76,23 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
 
         fprintf(stderr, "[ENCODER] Max compressed size: %zu\n", max_comp_size);
         
-        // Create a CUDA stream
-        cudaStream_t stream;
-        err = cudaStreamCreate(&stream);
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaStreamCreate failed: %s\n", cudaGetErrorString(err));
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("Stream creation failed");
-        }
-        fprintf(stderr, "[ENCODER] Created CUDA stream: %p\n", stream);
-
-        // Try the ASYNC version which doesn't need device pointers!
-        // From the header: nvcompBatchedZstdCompressGetTempSizeAsync takes:
-        // (num_chunks, max_uncompressed_chunk_bytes, opts, temp_bytes, max_total_uncompressed_bytes)
-        fprintf(stderr, "[ENCODER] ========================================\n");
-        fprintf(stderr, "[ENCODER] Trying GetTempSizeAsync (simpler API)\n");
-        fprintf(stderr, "[ENCODER] ========================================\n");
-        fprintf(stderr, "[ENCODER]   num_chunks: 1\n");
-        fprintf(stderr, "[ENCODER]   max_uncompressed_chunk_bytes: %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER]   compress_opts: {reserved[0]=%d}\n", (int)opts.reserved[0]);
-        fprintf(stderr, "[ENCODER]   max_total_uncompressed_bytes: %u\n", uncompressed_size);
-        fprintf(stderr, "[ENCODER] ========================================\n");
-        
-        // Use the Async version which doesn't need actual data pointers
-        status = nvcompBatchedZstdCompressGetTempSizeAsync(
-            1,                  // num_chunks
+        // Get temp size for compression (v3.0.6 API - simpler!)
+        fprintf(stderr, "[ENCODER] Getting temp size (nvCOMP 3.0.6 API)...\n");
+        status = nvcompBatchedZstdCompressGetTempSize(
+            1,                  // batch_size
             uncompressed_size,  // max_uncompressed_chunk_bytes
-            opts,               // compress_opts
-            &temp_size,         // temp_bytes (output)
-            uncompressed_size   // max_total_uncompressed_bytes
+            opts,               // opts
+            &temp_size          // temp_bytes (output)
         );
 
-        fprintf(stderr, "[ENCODER] ========================================\n");
-        fprintf(stderr, "[ENCODER] GetTempSizeAsync RESULT:\n");
-        fprintf(stderr, "[ENCODER]   status = %d", status);
-        switch(status) {
-            case 0: fprintf(stderr, " (nvcompSuccess)"); break;
-            case 1: fprintf(stderr, " (nvcompErrorInvalidValue)"); break;
-            case 2: fprintf(stderr, " (nvcompErrorNotSupported)"); break;
-            case 3: fprintf(stderr, " (nvcompErrorCannotDecompress)"); break;
-            case 4: fprintf(stderr, " (nvcompErrorBadChecksum)"); break;
-            case 10: fprintf(stderr, " (nvcompErrorInvalidValue - CHECK PARAMS!)"); break;
-            default: fprintf(stderr, " (UNKNOWN ERROR)"); break;
-        }
-        fprintf(stderr, "\n");
-        fprintf(stderr, "[ENCODER]   temp_size = %zu bytes", temp_size);
-        if (temp_size > 0) {
-            fprintf(stderr, " (%.2f MB)", temp_size / 1024.0 / 1024.0);
-        }
-        fprintf(stderr, "\n");
-        fprintf(stderr, "[ENCODER] ========================================\n");
-        
-        // Try to get more error info from CUDA
-        cudaError_t cuda_err = cudaGetLastError();
-        if (cuda_err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] CUDA error after GetTempSize: %s\n", cudaGetErrorString(cuda_err));
-        }
-        
         if (status != nvcompSuccess) {
-            fprintf(stderr, "[ENCODER] GetTempSizeAsync failed: %d\n", status);
-            cudaStreamDestroy(stream);
+            fprintf(stderr, "[ENCODER] GetTempSize failed: %d\n", status);
             cudaFree(d_uncompressed);
-            throw std::runtime_error("GetTempSizeAsync failed");
+            throw std::runtime_error("GetTempSize failed");
         }
+        
+        fprintf(stderr, "[ENCODER] ✓ Temp size: %zu bytes (%.2f MB)\n", 
+                temp_size, temp_size / 1024.0 / 1024.0);
 
         fprintf(stderr, "[ENCODER] Temp size: %zu bytes\n", temp_size);
 

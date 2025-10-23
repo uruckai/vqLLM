@@ -4,9 +4,21 @@
  */
 
 #include "encoder_zstd.h"
+#include "format_zstd.h"
 #include <zstd.h>
 #include <stdexcept>
 #include <cstring>
+
+// Define simplified header for now
+#define ZSTD_LAYER_MAGIC 0x5A535444
+struct ZstdLayerHeader {
+    uint32_t magic;
+    uint32_t rows;
+    uint32_t cols;
+    uint32_t uncompressed_size;
+    uint32_t payload_size;
+    uint8_t dtype;
+} __attribute__((packed));
 
 #ifdef NVCOMP_AVAILABLE
 #include <cuda_runtime.h>

@@ -4,9 +4,21 @@
  */
 
 #include "decoder_zstd.h"
+#include "format_zstd.h"
 #include <zstd.h>
 #include <stdexcept>
 #include <cstring>
+
+// Define simplified header for now
+#define ZSTD_LAYER_MAGIC 0x5A535444
+struct ZstdLayerHeader {
+    uint32_t magic;
+    uint32_t rows;
+    uint32_t cols;
+    uint32_t uncompressed_size;
+    uint32_t payload_size;
+    uint8_t dtype;
+} __attribute__((packed));
 
 #ifdef NVCOMP_AVAILABLE
 #include <cuda_runtime.h>
@@ -118,15 +130,26 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
         }
         
         // Decompress! (v3.0.6 API)
+        // nvCOMP 3.0.6 signature:
+        // nvcompStatus_t nvcompBatchedZstdDecompressAsync(
+        //     const void* const* device_compressed_ptrs,
+        //     const size_t* device_compressed_bytes,
+        //     const size_t* device_uncompressed_bytes,
+        //     size_t* device_actual_uncompressed_bytes,
+        //     size_t batch_size,
+        //     void* device_temp_ptr,
+        //     size_t temp_bytes,
+        //     void* const* device_uncompressed_ptrs,
+        //     cudaStream_t stream);
         status = nvcompBatchedZstdDecompressAsync(
-            h_compressed_ptrs,              // const void* const* (host array)
+            h_compressed_ptrs,              // const void* const* (host array of device pointers)
             h_compressed_sizes,             // const size_t* (host array)
             h_uncompressed_sizes,           // const size_t* (host array) 
             h_actual_uncompressed_sizes,    // size_t* (host array - output)
             1,                              // batch_size
             d_temp,                         // device_temp_ptr
             temp_size,                      // temp_bytes
-            h_uncompressed_ptrs,            // void* const* (host array)
+            h_uncompressed_ptrs,            // void* const* (host array of device pointers)
             stream);                        // cudaStream_t
         
         if (status != nvcompSuccess) {
@@ -182,7 +205,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
 }
 
 void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t compressed_size,
-                                       uint32_t& rows, uint32_t& cols, uint8_t& dtype) {
+                                       uint32_t& rows, uint32_t& cols) {
     // Parse header
     if (compressed_size < sizeof(ZstdLayerHeader)) {
         return nullptr;
@@ -197,7 +220,6 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
     
     rows = header.rows;
     cols = header.cols;
-    dtype = header.dtype;
     
 #ifdef USE_NVCOMP_ZSTD
     const uint8_t* payload = compressed_data + sizeof(ZstdLayerHeader);
