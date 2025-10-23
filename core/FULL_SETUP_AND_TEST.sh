@@ -27,6 +27,11 @@ fi
 echo "✓ Dependencies installed"
 echo ""
 
+echo "Installing Python packages..."
+pip install -q transformers torch accelerate
+echo "✓ Python packages installed"
+echo ""
+
 # Step 1: Check/Install nvCOMP
 echo "========================================="
 echo "STEP 1: Checking nvCOMP installation"
