@@ -9,6 +9,24 @@ export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 cd /workspace/CodecLLM/core
 
+# Step 0: Install dependencies
+echo "========================================="
+echo "STEP 0: Installing dependencies"
+echo "========================================="
+echo ""
+
+echo "Installing libzstd-dev..."
+sudo apt-get update -qq
+sudo apt-get install -y libzstd-dev
+
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to install libzstd-dev!"
+    exit 1
+fi
+
+echo "✓ Dependencies installed"
+echo ""
+
 # Step 1: Check/Install nvCOMP
 echo "========================================="
 echo "STEP 1: Checking nvCOMP installation"
