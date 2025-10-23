@@ -153,7 +153,7 @@ print()
 print("[5/6] Creating compressed model...")
 
 class CompressedLinear(torch.nn.Module):
-    """Linear layer that decompresses weights once and keeps them on GPU"""
+    """Linear layer that decompresses weights on-the-fly (no caching!)"""
     
     def __init__(self, original_module, compressed_data, decoder_handle, target_device='cuda'):
         super().__init__()
@@ -180,59 +180,27 @@ class CompressedLinear(torch.nn.Module):
         else:
             self.bias = None
         
-        # Cache decompressed weight on GPU (not CPU!)
-        self._cached_weight_gpu = None
-        self._cached_weight_pinned = None
-        self._gpu_failed = False
-    
-    def decompress_to_gpu(self):
-        if self._cached_weight_gpu is None and not self._gpu_failed:
-            weight_int8 = self.decoder.decode_layer(self.compressed)
-            weight_float = weight_int8.astype(np.float32) * self.scale
-            weight_tensor = torch.from_numpy(weight_float).to(self.dtype)
-            del weight_float
-            del weight_int8
-            try:
-                self._cached_weight_gpu = weight_tensor.to(self.target_device)
-                torch.cuda.synchronize()
-            except RuntimeError as e:
-                print("  ⚠️  GPU allocation failed for layer; falling back to pinned CPU memory")
-                if torch.cuda.is_available():
-                    free_bytes, total_bytes = torch.cuda.mem_get_info()
-                    print(f"    Driver free: {free_bytes/1024**3:.2f} GB / {total_bytes/1024**3:.2f} GB total")
-                self._gpu_failed = True
-                self._cached_weight_pinned = weight_tensor.pin_memory()
-            finally:
-                if self._cached_weight_gpu is None:
-                    # keep pinned weight
-                    pass
-                del weight_tensor
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-    
-    def ensure_pinned(self):
-        if self._cached_weight_pinned is None:
-            weight_int8 = self.decoder.decode_layer(self.compressed)
-            weight_float = weight_int8.astype(np.float32) * self.scale
-            cpu_tensor = torch.from_numpy(weight_float).to(self.dtype)
-            self._cached_weight_pinned = cpu_tensor.pin_memory()
-            del cpu_tensor
-            del weight_float
-            del weight_int8
+        # NO CACHING - decompress fresh every time!
     
     def forward(self, x):
-        if not self._gpu_failed:
-            self.decompress_to_gpu()
-        if self._cached_weight_gpu is not None:
-            weight = self._cached_weight_gpu
-            return torch.nn.functional.linear(x, weight, self.bias)
-        # fallback path
-        self.ensure_pinned()
-        weight_gpu = self._cached_weight_pinned.to(x.device, non_blocking=True)
+        """Decompress on-the-fly, use once, then immediately free"""
+        # Decompress to CPU (nvCOMP does GPU decode internally)
+        weight_int8 = self.decoder.decode_layer(self.compressed)
+        weight_float = weight_int8.astype(np.float32) * self.scale
+        weight_tensor = torch.from_numpy(weight_float).to(self.dtype).reshape(self.shape)
+        
+        # Move to GPU
+        weight_gpu = weight_tensor.to(x.device)
+        
+        # Use it ONCE
         output = torch.nn.functional.linear(x, weight_gpu, self.bias)
+        
+        # FREE IMMEDIATELY!
         del weight_gpu
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
+        del weight_tensor
+        del weight_float
+        del weight_int8
+        
         return output
 
 # Replace layers
@@ -293,52 +261,7 @@ print(f"✓ Model ready with {deleted_count} compressed layers")
 print()
 
 # Pre-warm the cache: decompress all layers to GPU
-print("[5.5/6] Decompressing layers to GPU...")
-print("  This happens once - then weights stay on GPU")
-
-# Show initial memory state
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
-    torch.cuda.reset_peak_memory_stats()
-    initial_mem = torch.cuda.memory_allocated() / 1024**3
-    print(f"  Starting GPU memory: {initial_mem:.2f} GB")
-
-warmup_count = 0
-decompress_time = 0
-import gc
-
-for name, module in model.named_modules():
-    if isinstance(module, CompressedLinear):
-        # Show memory before
-        if torch.cuda.is_available() and warmup_count == 0:
-            mem_before = torch.cuda.memory_allocated() / 1024**3
-            print(f"  Memory before first decompress: {mem_before:.2f} GB")
-        
-        t0 = time.time()
-        module.decompress_to_gpu()
-        decompress_time += time.time() - t0
-        warmup_count += 1
-        
-        # Force garbage collection after each layer
-        gc.collect()
-        
-        if warmup_count % 5 == 0:
-            if torch.cuda.is_available():
-                current_mem = torch.cuda.memory_allocated() / 1024**3
-                print(f"    {warmup_count}/{num_to_compress} layers decompressed (GPU: {current_mem:.2f} GB)")
-            else:
-                print(f"    {warmup_count}/{num_to_compress} layers decompressed")
-
-print(f"✓ {warmup_count} layers decompressed to GPU in {decompress_time:.2f}s")
-if torch.cuda.is_available():
-    final_mem = torch.cuda.memory_allocated() / 1024**3
-    added_mem = final_mem - initial_mem
-    print(f"  GPU memory now: {final_mem:.2f} GB (+{added_mem:.2f} GB for {warmup_count} layers)")
-    print(f"  Average per layer: {added_mem * 1024 / warmup_count:.1f} MB")
-    torch.cuda.empty_cache()  # Clean up any temporary allocations
-print()
-
-# Run compressed inference
+# Run compressed inference (on-the-fly decompression happens in forward()!)
 print("[6/6] Running compressed inference...")
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
