@@ -184,49 +184,38 @@ class CompressedLinear(torch.nn.Module):
     
     def forward(self, x):
         """Decompress on-the-fly with GPU-direct decode (no CPU roundtrip!)"""
-        try:
-            # GPU-DIRECT DECODE: decompress directly to GPU memory
-            gpu_ptr, rows, cols, dtype = self.decoder.decode_layer_to_gpu(self.compressed)
-            
-            # Wrap GPU pointer as PyTorch tensor (zero-copy!)
-            # Create a tensor from the raw GPU pointer
-            import ctypes
-            import torch.cuda as cuda
-            
-            # Use torch's internal function to wrap CUDA pointer
-            storage = torch.cuda.IntStorage._new_with_data_ptr(
-                data_ptr=gpu_ptr,
-                size=rows * cols
-            )
-            weight_int8_gpu = torch.IntTensor(storage).view(rows, cols).to(torch.int8)
-            
-            # Dequantize on GPU (no CPU involved!)
-            weight_fp = weight_int8_gpu.to(self.dtype) * self.scale
-            
-            # Reshape and use
-            weight_fp = weight_fp.reshape(self.shape)
-            output = torch.nn.functional.linear(x, weight_fp, self.bias)
-            
-            # FREE GPU memory
-            del weight_fp
-            del weight_int8_gpu
-            cuda.cudart().cudaFree(gpu_ptr)
-            
-            return output
-            
-        except Exception as e:
-            # Fallback to CPU path if GPU-direct fails
-            print(f"GPU-direct decode failed ({e}), using CPU fallback")
-            weight_int8 = self.decoder.decode_layer(self.compressed)
-            weight_float = weight_int8.astype(np.float32) * self.scale
-            weight_tensor = torch.from_numpy(weight_float).to(self.dtype).reshape(self.shape)
-            weight_gpu = weight_tensor.to(x.device)
-            output = torch.nn.functional.linear(x, weight_gpu, self.bias)
-            del weight_gpu
-            del weight_tensor
-            del weight_float
-            del weight_int8
-            return output
+        # GPU-DIRECT DECODE: decompress directly to GPU memory
+        gpu_ptr, rows, cols, dtype = self.decoder.decode_layer_to_gpu(self.compressed)
+        
+        # Copy GPU memory to PyTorch tensor
+        # Create empty tensor on GPU
+        weight_int8_gpu = torch.empty((rows, cols), dtype=torch.int8, device=x.device)
+        
+        # Copy from nvCOMP's GPU buffer to PyTorch's GPU buffer
+        import ctypes
+        cudart = ctypes.CDLL('libcudart.so')
+        cudart.cudaMemcpy(
+            ctypes.c_void_p(weight_int8_gpu.data_ptr()),
+            ctypes.c_void_p(gpu_ptr),
+            ctypes.c_size_t(rows * cols),
+            ctypes.c_int(1)  # cudaMemcpyDeviceToDevice
+        )
+        
+        # Free nvCOMP's GPU buffer
+        cudart.cudaFree(ctypes.c_void_p(gpu_ptr))
+        
+        # Dequantize on GPU (no CPU involved!)
+        weight_fp = weight_int8_gpu.to(self.dtype) * self.scale
+        
+        # Reshape and use
+        weight_fp = weight_fp.reshape(self.shape)
+        output = torch.nn.functional.linear(x, weight_fp, self.bias)
+        
+        # FREE GPU memory
+        del weight_fp
+        del weight_int8_gpu
+        
+        return output
 
 # Replace layers
 def replace_linear_with_compressed(module, compressed_weights, decoder):
