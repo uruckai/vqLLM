@@ -12,7 +12,6 @@
 #include <cuda_runtime.h>
 #if __has_include(<nvcomp/zstd.h>)
     #include <nvcomp/zstd.h>
-    #include <nvcomp/nvcomp.h>
     #define USE_NVCOMP_ZSTD
 #endif
 #endif
