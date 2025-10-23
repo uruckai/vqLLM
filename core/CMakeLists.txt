@@ -63,11 +63,11 @@ set(SOURCES
 # Add Zstd files if Zstd is available
 if(ZSTD_FOUND)
     list(APPEND SOURCES
-        encoder_zstd.cpp
-        decoder_zstd.cpp
+        encoder_zstd_v3.cpp
+        decoder_zstd_v3.cpp
         c_api_zstd.cpp
     )
-    message(STATUS "Zstd support enabled")
+    message(STATUS "Zstd support enabled (using nvCOMP 3.0.6 API)")
 else()
     message(WARNING "Zstd not found - Zstd encoder/decoder will not be built")
 endif()
