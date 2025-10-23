@@ -2,17 +2,18 @@
 COPY-PASTE THIS INTO RUNPOD
 ================================================================================
 
-cd /workspace/CodecLLM && git pull && cd core && bash REBUILD_AND_TEST.sh
+cd /workspace/CodecLLM && git pull && cd core && bash FULL_SETUP_AND_TEST.sh
 
 ================================================================================
 This will:
-  1. Pull latest code:
+  1. Check/install nvCOMP 3.0.6 (if not already installed)
+  2. Pull latest code:
      - Per-channel quantization (5x better accuracy!)
      - Better scale broadcasting
      - Build fix (removed old batched rANS decoder)
-  2. Rebuild codec with nvCOMP 3.0.6
-  3. Run round-trip test (verify compression works)
-  4. Run LLM test (verify output is correct)
+  3. Rebuild codec with nvCOMP 3.0.6
+  4. Run round-trip test (verify compression works)
+  5. Run LLM test (verify output is correct)
 
 Expected results:
   ✓ Build completes successfully (no more decoder_batched.cu error!)
