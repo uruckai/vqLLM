@@ -179,9 +179,16 @@ class CompressedLinear(torch.nn.Module):
         scale_np = compressed_data['scale']
         if isinstance(scale_np, np.ndarray):
             # Per-channel quantization (1D array)
-            self.register_buffer('scale', torch.from_numpy(scale_np).to(torch_dtype).to(target_device))
+            scale_tensor = torch.from_numpy(scale_np).to(torch_dtype).to(target_device)
+            # DEBUG: Verify scales are reasonable
+            if scale_tensor.numel() < 10:
+                print(f"[DEBUG] Scale values: {scale_tensor.cpu().numpy()}")
+            else:
+                print(f"[DEBUG] Scale shape: {scale_tensor.shape}, range: [{scale_tensor.min():.6f}, {scale_tensor.max():.6f}]")
+            self.register_buffer('scale', scale_tensor)
         else:
             # Per-tensor quantization (scalar) - legacy support
+            print(f"[DEBUG] Using per-tensor scale: {scale_np}")
             self.register_buffer('scale', torch.tensor(scale_np, dtype=torch_dtype, device=target_device))
         
         # Keep bias if present
