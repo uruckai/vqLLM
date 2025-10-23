@@ -140,6 +140,16 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
         print(f"  compressed type: {type(compressed)}")
         print(f"  compressed length: {len(compressed) if isinstance(compressed, bytes) else 'N/A'}")
         print(f"  ratio: {ratio}")
+        print(f"  First 40 bytes (hex): {compressed[:40].hex()}")
+        
+        # Parse header to verify encoding
+        import struct
+        if len(compressed) >= 21:
+            magic, rows_enc, cols_enc, uncomp_enc, payload_enc, dtype_enc = struct.unpack('<IIIIIB', compressed[:21])
+            print(f"  Header after encoding:")
+            print(f"    Magic: 0x{magic:08x}")
+            print(f"    Rows: {rows_enc}, Cols: {cols_enc}")
+            print(f"    Expected: {weight.shape}")
     
     # Store (scales is now a vector, one per output channel)
     # CRITICAL: Make a COPY to prevent in-place modification in subsequent loop iterations!
