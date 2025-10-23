@@ -51,21 +51,29 @@ bool ZstdGPUDecoder::isAvailable() {
 
 bool ZstdGPUDecoder::parseHeader(const uint8_t* compressed_data, size_t compressed_size,
                                   LayerHeaderZstd& header) {
-    if (compressed_size < sizeof(LayerHeaderZstd)) {
+    // We're actually using ZstdLayerHeader (simplified format)
+    if (compressed_size < sizeof(ZstdLayerHeader)) {
         return false;
     }
     
-    memcpy(&header, compressed_data, sizeof(LayerHeaderZstd));
+    ZstdLayerHeader simple_header;
+    memcpy(&simple_header, compressed_data, sizeof(ZstdLayerHeader));
     
     // Validate magic number
-    if (header.magic != ZSTD_MAGIC) {
+    if (simple_header.magic != ZSTD_LAYER_MAGIC) {
         return false;
     }
     
-    // Validate version
-    if (header.version != ZSTD_VERSION) {
-        return false;
-    }
+    // Convert to LayerHeaderZstd format for API compatibility
+    header.magic = simple_header.magic;
+    header.version = 1;  // Default version
+    header.rows = simple_header.rows;
+    header.cols = simple_header.cols;
+    header.uncompressed_size = simple_header.uncompressed_size;
+    header.compressed_size = simple_header.payload_size;
+    header.compression_level = 0;  // Unknown
+    header.checksum = 0;  // Not used
+    memset(header.reserved, 0, sizeof(header.reserved));
     
     return true;
 }
@@ -133,6 +141,16 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
             throw std::runtime_error("cudaMemcpy H2D failed");
         }
         
+        // Allocate device memory for statuses (nvCOMP requires this)
+        nvcompStatus_t* d_statuses = nullptr;
+        err = cudaMalloc(&d_statuses, sizeof(nvcompStatus_t));
+        if (err != cudaSuccess) {
+            cudaFree(d_temp);
+            cudaFree(d_uncompressed);
+            cudaFree(d_compressed);
+            throw std::runtime_error("Failed to allocate device statuses");
+        }
+        
         // Prepare HOST arrays (v3.0.6 uses host arrays!)
         const void* h_compressed_ptrs[1] = {d_compressed};
         size_t h_compressed_sizes[1] = {payload_size};
@@ -144,6 +162,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
         cudaStream_t stream;
         err = cudaStreamCreate(&stream);
         if (err != cudaSuccess) {
+            cudaFree(d_statuses);
             cudaFree(d_temp);
             cudaFree(d_uncompressed);
             cudaFree(d_compressed);
@@ -171,12 +190,13 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
             d_temp,                         // device_temp_ptr
             temp_size,                      // temp_bytes
             h_uncompressed_ptrs,            // void* const* (host array of device pointers)
-            nullptr,                        // device_statuses (optional)
+            d_statuses,                     // device_statuses (required!)
             stream);                        // cudaStream_t
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "[DECODER] DecompressAsync failed: %d\n", status);
             cudaStreamDestroy(stream);
+            cudaFree(d_statuses);
             cudaFree(d_temp);
             cudaFree(d_uncompressed);
             cudaFree(d_compressed);
@@ -201,6 +221,7 @@ bool ZstdGPUDecoder::decodeLayer(const uint8_t* compressed_data, size_t compress
         
         // Cleanup
         cudaStreamDestroy(stream);
+        cudaFree(d_statuses);
         cudaFree(d_temp);
         cudaFree(d_uncompressed);
         cudaFree(d_compressed);
@@ -288,6 +309,16 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
             return nullptr;
         }
         
+        // Allocate device statuses (nvCOMP requires this)
+        nvcompStatus_t* d_statuses = nullptr;
+        err = cudaMalloc(&d_statuses, sizeof(nvcompStatus_t));
+        if (err != cudaSuccess) {
+            cudaFree(d_temp);
+            cudaFree(d_uncompressed);
+            cudaFree(d_compressed);
+            return nullptr;
+        }
+        
         // Prepare host arrays
         const void* h_compressed_ptrs[1] = {d_compressed};
         size_t h_compressed_sizes[1] = {payload_size};
@@ -298,6 +329,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         cudaStream_t stream;
         err = cudaStreamCreate(&stream);
         if (err != cudaSuccess) {
+            cudaFree(d_statuses);
             cudaFree(d_temp);
             cudaFree(d_uncompressed);
             cudaFree(d_compressed);
@@ -308,11 +340,13 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         status = nvcompBatchedZstdDecompressAsync(
             h_compressed_ptrs, h_compressed_sizes, h_uncompressed_sizes,
             h_actual_sizes, 1, d_temp, temp_size, h_uncompressed_ptrs, 
-            nullptr, stream);  // device_statuses, stream
+            d_statuses, stream);  // device_statuses, stream
         
         if (status != nvcompSuccess) {
             fprintf(stderr, "[DECODER] GPU decompress failed: %d\n", status);
+            cudaStreamSynchronize(stream);
             cudaStreamDestroy(stream);
+            cudaFree(d_statuses);
             cudaFree(d_temp);
             cudaFree(d_uncompressed);
             cudaFree(d_compressed);
@@ -321,6 +355,7 @@ void* ZstdGPUDecoder::decodeLayerToGPU(const uint8_t* compressed_data, size_t co
         
         cudaStreamSynchronize(stream);
         cudaStreamDestroy(stream);
+        cudaFree(d_statuses);
         cudaFree(d_temp);
         cudaFree(d_compressed);
         
