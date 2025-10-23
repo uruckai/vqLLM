@@ -173,6 +173,15 @@ print(f"  Original size:    {total_original/1024**2:.1f} MB")
 print(f"  Compressed size:  {total_compressed/1024**2:.1f} MB")
 print(f"  Compression ratio: {overall_ratio:.2f}x")
 print(f"  Compression time: {compress_time:.2f}s")
+
+# DEBUG: Check the first layer's scales RIGHT BEFORE creating the model
+first_layer_name = list(compressed_weights.keys())[0]
+test_scale = compressed_weights[first_layer_name]['scale']
+print(f"\n[DEBUG END OF COMPRESSION] Checking first layer '{first_layer_name}' scales:")
+print(f"  Dtype: {test_scale.dtype}")
+print(f"  Range: [{test_scale.min():.6f}, {test_scale.max():.6f}]")
+print(f"  First 5: {test_scale[:5]}")
+
 print()
 
 # Replace layers with compressed versions
