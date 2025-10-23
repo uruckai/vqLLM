@@ -85,6 +85,9 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         
         fprintf(stderr, "[ENCODER] Max compressed size: %zu\n", max_comp_size);
                 
+        const void* h_uncompressed_ptrs[1] = {d_uncompressed};
+        size_t h_uncompressed_sizes[1] = {uncompressed_size};
+
         // Query required temporary size using host arrays (nvCOMP only needs the metadata)
         status = nvcompBatchedZstdCompressGetTempSizeSync(
             h_uncompressed_ptrs,
