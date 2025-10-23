@@ -137,10 +137,10 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     if i == 0:
         print(f"\n[DEBUG COMPRESS] Layer '{name}':")
         print(f"  Weight shape: {weight.shape}, dtype: {weight.dtype}")
-        print(f"  Scales shape: {scales.shape}, range: [{scales.min():.6f}, {scales.max():.6f}]")
-        print(f"  After squeeze: {scales_to_store.shape}")
-        print(f"  Storing scales: shape={scales_to_store.shape}, range=[{scales_to_store.min():.6f}, {scales_to_store.max():.6f}]")
-        print(f"  Scales dtype: {scales_to_store.dtype}\n")
+        print(f"  Scales shape BEFORE squeeze: {scales.shape}, dtype: {scales.dtype}")
+        print(f"  Scales AFTER squeeze: shape={scales_to_store.shape}, dtype={scales_to_store.dtype}")
+        print(f"  Scales range: [{scales_to_store.min():.6f}, {scales_to_store.max():.6f}]")
+        print(f"  First 5 scale values: {scales_to_store[:5]}")
     
     compressed_weights[name] = {
         'compressed': compressed,
@@ -150,6 +150,16 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
         'dtype': weight.dtype,  # Original weight dtype
         'ratio': ratio
     }
+    
+    # DEBUG: Verify what's in the dictionary immediately after storing
+    if i == 0:
+        stored_scale = compressed_weights[name]['scale']
+        print(f"  IMMEDIATELY after storing in dict:")
+        print(f"    Type: {type(stored_scale)}")
+        print(f"    Shape: {stored_scale.shape}")
+        print(f"    Dtype: {stored_scale.dtype}")
+        print(f"    Range: [{stored_scale.min():.6f}, {stored_scale.max():.6f}]")
+        print(f"    First 5: {stored_scale[:5]}\n")
     
     total_original += weight.nbytes
     total_compressed += len(compressed)
@@ -282,6 +292,16 @@ def replace_linear_with_compressed(module, compressed_weights, decoder):
             # Find matching compressed weight
             for compressed_name, compressed_data in compressed_weights.items():
                 if compressed_name.endswith('.' + name) or compressed_name == name:
+                    # DEBUG: Check what we're passing to CompressedLinear
+                    if 'q_proj' in compressed_name and 'layers.0' in compressed_name:
+                        print(f"\n[DEBUG BEFORE PASSING] Passing to CompressedLinear for '{compressed_name}':")
+                        scale_data = compressed_data['scale']
+                        print(f"  Type: {type(scale_data)}")
+                        print(f"  Shape: {scale_data.shape}")
+                        print(f"  Dtype: {scale_data.dtype}")
+                        print(f"  Range: [{scale_data.min():.6f}, {scale_data.max():.6f}]")
+                        print(f"  First 5: {scale_data[:5]}\n")
+                    
                     # Replace with compressed version (will decompress to GPU later)
                     compressed_layer = CompressedLinear(child, compressed_data, decoder, target_device=device)
                     setattr(module, name, compressed_layer)
