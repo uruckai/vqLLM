@@ -116,9 +116,9 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     # Get weight
     weight = module.weight.data.cpu().numpy()
     
-    # PER-CHANNEL QUANTIZATION (much better for LLMs!)
-    # Scale each output channel (row) independently
-    # Shape: (out_features, in_features) -> scales: (out_features, 1)
+    # PER-CHANNEL QUANTIZATION (critical for LLMs!)
+    # Each output channel (row) gets its own scale
+    # This prevents garbage output from poorly-scaled channels
     scales = np.abs(weight).max(axis=1, keepdims=True) / 127.0
     scales = np.maximum(scales, 1e-8)  # Avoid division by zero
     weight_int8 = np.clip(np.round(weight / scales), -127, 127).astype(np.int8)
@@ -128,7 +128,7 @@ for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
     compressed, ratio = encoder.encode_layer(weight_int8)
     compress_time += time.time() - t0
     
-    # Store (scales is now a vector, not a scalar!)
+    # Store (scales is now a vector, one per output channel)
     compressed_weights[name] = {
         'compressed': compressed,
         'shape': weight.shape,
