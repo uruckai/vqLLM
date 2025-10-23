@@ -253,6 +253,9 @@ class CompressedLinear(torch.nn.Module):
     
     def forward(self, x):
         """Decompress on-the-fly with GPU-direct decode (no CPU roundtrip!)"""
+        # DEBUG: ALWAYS print to verify this is being called
+        print(f"[FORWARD CALLED] CompressedLinear.forward() executing")
+        
         # DEBUG: Check compressed data on first call
         if not hasattr(self, '_debug_compressed'):
             print(f"[DEBUG DECOMPRESS] Compressed data info:")
