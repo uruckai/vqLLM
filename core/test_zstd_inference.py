@@ -109,7 +109,7 @@ total_original = 0
 total_compressed = 0
 compress_time = 0
 
-num_to_compress = min(20, len(linear_layers))  # Compress 20 layers - we have 29GB free!
+num_to_compress = min(1, len(linear_layers))  # Compress only 1 layer for testing
 print(f"  Compressing {num_to_compress} layers...")
 
 for i, (name, module) in enumerate(linear_layers[:num_to_compress]):
