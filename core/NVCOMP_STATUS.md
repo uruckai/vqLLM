@@ -1,137 +1,97 @@
-# nvCOMP 5.0 Debugging Status
+# nvCOMP 5.0 Investigation Summary
 
-## Summary
-nvCOMP 5.0's Zstd batched API consistently returns `nvcompErrorInvalidValue` (error 10) for **all** function calls, even with the simplest possible parameters.
+## Problem
+Both compression and decompression using nvCOMP 5.0's Zstd batched API consistently fail with error code 10 (`nvcompErrorInvalidValue`).
 
-## What We've Tried
+## What We Tried
 
-### 1. Using GetTempSizeSync with Device Pointer Arrays
-```c
-void** d_uncompressed_ptrs;      // Device memory
-size_t* d_uncompressed_sizes;    // Device memory
-cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
-cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
-cudaMemcpy(d_uncompressed_ptrs, &d_uncompressed, ...);
-cudaMemcpy(d_uncompressed_sizes, &uncompressed_size, ...);
+### 1. GetTempSizeSync with Device Pointer Arrays ❌
+- Allocated device memory for pointer and size arrays
+- Copied pointers to device memory
+- Passed device arrays to `nvcompBatchedZstdCompressGetTempSizeSync`
+- **Result**: Error 10
 
-nvcompBatchedZstdCompressGetTempSizeSync(
-    d_uncompressed_ptrs,     // ✓ Device pointer array
-    d_uncompressed_sizes,    // ✓ Device size array
-    1,                       // num_chunks
-    65536,                   // max_uncompressed_chunk_bytes
-    opts,                    // {reserved[64] = {0}}
-    &temp_size,             // output
-    65536,                   // max_total_uncompressed_bytes
-    stream                   // Valid CUDA stream
-);
+### 2. GetTempSizeSync with nullptr ❌
+- Attempted passing NULL for pointer arrays
+- **Result**: Error 10
+
+### 3. GetTempSizeSync with Host Pointer Arrays ❌
+- Passed host-side pointer arrays
+- **Result**: Error 10
+
+### 4. GetTempSizeAsync (Simplest API) ❌
+- Used the async version which only needs max sizes
+- No device pointers required
+- Parameters: `(num_chunks=1, max_size=65536, opts={0}, &temp_size, max_total=65536)`
+- **Result**: Error 10
+
+### 5. Minimal Standalone Test ❌
+- Created a minimal C++ program outside our codebase
+- Called nvCOMP API with same parameters
+- **Result**: Error 10
+
+## Evidence of nvCOMP 5.0 Issues
+
 ```
-**Result:** Error 10 (nvcompErrorInvalidValue)
-
-### 2. Using GetTempSizeAsync (Simpler API)
-```c
-nvcompBatchedZstdCompressGetTempSizeAsync(
-    1,                       // num_chunks
-    65536,                   // max_uncompressed_chunk_bytes
-    opts,                    // {reserved[64] = {0}}
-    &temp_size,             // output
-    65536                    // max_total_uncompressed_bytes
-);
+nvCOMP library version strings contain RMM errors:
+- RMM failure at: .../format.hpp:60: Error during formatting.
+- RMM failure at: .../pool_memory_resource.hpp:276: Maximum pool size exceeded
 ```
-**Result:** Error 10 (nvcompErrorInvalidValue)
 
-### 3. Minimal Test Program
-Created a standalone CUDA program that calls the exact same API - **also fails with error 10**.
+## Additional Failures
 
-## Observations
-
-1. **All parameters are correct** according to nvCOMP 5.0 headers
-2. **CUDA operations succeed** (memory allocation, copies, stream creation)
-3. **Alignment requirements met** (queried via GetRequiredAlignments)
-4. **Manager API also fails** with "CUDA driver version insufficient" (but driver is 12.8, runtime is 12.8 - they match!)
-5. **Decompression also fails** with error 10
-
-## Possible Root Causes
-
-### Theory 1: nvCOMP 5.0 is Broken/Incomplete
-- The RMM (RAPIDS Memory Manager) errors in version strings suggest build issues
-- nvCOMP 5.0 might have been released with incomplete/broken Zstd support
-- The "CUDA driver insufficient" error is spurious (versions match)
-
-### Theory 2: Missing Initialization
-- nvCOMP 5.0 might require some global initialization call we're not making
-- But the headers show no such function
-
-### Theory 3: Build Configuration Issue
-- nvCOMP 5.0 was built against different CUDA toolkit version
-- Library incompatibility despite matching version numbers
-
-### Theory 4: Documentation/API Mismatch
-- The headers might not match the actual library implementation
-- nvCOMP 5.0 API might be in flux
-
-## Recommendation
-
-**Downgrade to nvCOMP 3.0.6** which:
-- Has a simpler, more stable API
-- Was successfully used in many projects
-- Doesn't have the Manager API overhead
-- Should work with our code after minor API adjustments
-
-## Next Steps
-
-1. Remove nvCOMP 5.0
-2. Install nvCOMP 3.0.6 from NVIDIA archives
-3. Update `encoder_zstd.cpp` and `decoder_zstd.cpp` to use nvCOMP 3.0 API
-4. Test compression/decompression
-
-## nvCOMP 3.0 API Reference
-
-### Compression
-```c
-// Get temp size (simpler in 3.0)
-nvcompBatchedZstdCompressGetTempSize(
-    num_chunks,
-    max_chunk_size,
-    &temp_bytes
-);
-
-// Compress
-nvcompBatchedZstdCompressAsync(
-    device_in_ptrs,
-    device_in_bytes,
-    chunk_size,
-    num_chunks,
-    device_temp,
-    temp_bytes,
-    device_out_ptrs,
-    device_out_bytes,
-    stream
-);
+### Manager API
 ```
+ERROR: Manager API failed: Encountered Cuda Error: 35: 
+'CUDA driver version is insufficient for CUDA runtime version'.
+```
+
+This occurs despite:
+- CUDA Driver: 12.8 (570.153.02)
+- CUDA Runtime: 12.8.93
+- Versions match perfectly!
 
 ### Decompression
-```c
-// Get temp size
-nvcompBatchedZstdDecompressGetTempSize(
-    num_chunks,
-    max_uncompressed_chunk_size,
-    &temp_bytes
-);
-
-// Decompress
-nvcompBatchedZstdDecompressAsync(
-    device_in_ptrs,
-    device_in_bytes,
-    device_out_bytes,
-    device_out_bytes_written,
-    num_chunks,
-    device_temp,
-    temp_bytes,
-    device_out_ptrs,
-    stream
-);
-```
+`nvcompBatchedZstdDecompressAsync` also fails with error 10 using the same pattern.
 
 ## Conclusion
 
-nvCOMP 5.0 appears to have fundamental issues with its Zstd implementation. We've exhausted all reasonable debugging approaches. Time to revert to a known-working version.
+**nvCOMP 5.0.0.6 Zstd batched API appears to be broken or has undocumented requirements.**
+
+Evidence:
+1. ✓ All parameters are correct per documentation
+2. ✓ Device memory allocations succeed
+3. ✓ CUDA operations work
+4. ✓ CPU Zstd compression/decompression works
+5. ✓ Minimal test fails the same way
+6. ✗ nvCOMP 5.0 consistently returns error 10
+7. ✗ RMM errors in library version strings
+
+## Recommendation
+
+### Option 1: Downgrade to nvCOMP 3.0.6 ⭐ RECOMMENDED
+- nvCOMP 3.0.6 has a proven track record
+- The batched API was stable in 3.x
+- We can test if the older version works
+
+### Option 2: Use CPU Compression + GPU Decompression Only
+- Keep using libzstd for CPU compression (works perfectly)
+- Use nvCOMP Manager API for GPU decompression
+- Avoid the batched API entirely
+
+### Option 3: Contact NVIDIA
+- File a bug report with nvCOMP team
+- Provide minimal reproduction case
+- Wait for fix
+
+## Next Steps
+
+**Try nvCOMP 3.0.6 first:**
+```bash
+# Remove nvCOMP 5
+sudo apt-get remove -y nvcomp
+sudo rm -rf /var/nvcomp-local-repo-ubuntu2404-5.0.0.6
+
+# We need to find working nvCOMP 3.0.6 download
+# or build from source
+```
