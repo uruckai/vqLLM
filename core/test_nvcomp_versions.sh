@@ -9,7 +9,6 @@ cat > /tmp/test_all_variations.cu << 'EOF'
 #include <string.h>
 #include <cuda_runtime.h>
 #include <nvcomp/zstd.h>
-#include <nvcomp/lz4.h>
 
 int main() {
     printf("=== Test 1: GetTempSizeAsync with all combinations ===\n");
@@ -108,22 +107,9 @@ int main() {
         printf("65536 chunk (recommended): status=%d\n", status);
     }
     
-    printf("\n=== Test 5: Try LZ4 instead of Zstd ===\n");
-    {
-        size_t temp_size = 0;
-        nvcompBatchedLZ4Opts_t lz4_opts = nvcompBatchedLZ4DefaultOpts;
-        nvcompStatus_t status = nvcompBatchedLZ4CompressGetTempSize(
-            1, 65536, lz4_opts, &temp_size
-        );
-        printf("LZ4 API: status=%d, temp_size=%zu\n", status, temp_size);
-        if (status == 0) {
-            printf("  ✓ LZ4 WORKS! nvCOMP is functional, just Zstd is broken.\n");
-        }
-    }
-    
     printf("\n=== Summary ===\n");
-    printf("If all tests failed, nvCOMP 5.0 Zstd is likely broken.\n");
-    printf("Check NVCOMP_STATUS.md for recommendations.\n");
+    printf("If ALL tests failed with error 10, nvCOMP 5.0 Zstd batched API is broken.\n");
+    printf("See NVCOMP_STATUS.md for next steps.\n");
     
     cudaStreamDestroy(stream);
     return 0;
