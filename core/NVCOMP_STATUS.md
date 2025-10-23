@@ -1,102 +1,137 @@
-# nvCOMP 5.0 Status Report
+# nvCOMP 5.0 Debugging Status
 
-## Current Situation
+## Summary
+nvCOMP 5.0's Zstd batched API consistently returns `nvcompErrorInvalidValue` (error 10) for **all** function calls, even with the simplest possible parameters.
 
-After extensive debugging, we've identified that **nvCOMP 5.0's Zstd batched API is not working** with our current implementation:
+## What We've Tried
 
-### Compression Issues
-- `nvcompBatchedZstdCompressGetTempSizeSync` returns error 10 (nvcompErrorInvalidValue)
-- Parameters we're passing appear to be incorrect
-- The 7th parameter in the function signature is unknown/undocumented
-- CPU Zstd fallback works (produces ~65KB compressed data)
+### 1. Using GetTempSizeSync with Device Pointer Arrays
+```c
+void** d_uncompressed_ptrs;      // Device memory
+size_t* d_uncompressed_sizes;    // Device memory
+cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
+cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
+cudaMemcpy(d_uncompressed_ptrs, &d_uncompressed, ...);
+cudaMemcpy(d_uncompressed_sizes, &uncompressed_size, ...);
 
-### Decompression Issues  
-- Manager API fails: "CUDA driver version is insufficient for CUDA runtime version" (error 35)
-- Batched API: `nvcompBatchedZstdDecompressGetTempSizeAsync` returns 454MB temp_size for 64KB data (clearly wrong)
-- `nvcompBatchedZstdDecompressAsync` fails with error 10 (nvcompErrorInvalidValue)
+nvcompBatchedZstdCompressGetTempSizeSync(
+    d_uncompressed_ptrs,     // ✓ Device pointer array
+    d_uncompressed_sizes,    // ✓ Device size array
+    1,                       // num_chunks
+    65536,                   // max_uncompressed_chunk_bytes
+    opts,                    // {reserved[64] = {0}}
+    &temp_size,             // output
+    65536,                   // max_total_uncompressed_bytes
+    stream                   // Valid CUDA stream
+);
+```
+**Result:** Error 10 (nvcompErrorInvalidValue)
 
-### Format Compatibility Problem
-**Critical Issue**: Using CPU libzstd for compression and nvCOMP for decompression creates a format mismatch. nvCOMP may expect a different Zstd frame format than standard libzstd produces.
+### 2. Using GetTempSizeAsync (Simpler API)
+```c
+nvcompBatchedZstdCompressGetTempSizeAsync(
+    1,                       // num_chunks
+    65536,                   // max_uncompressed_chunk_bytes
+    opts,                    // {reserved[64] = {0}}
+    &temp_size,             // output
+    65536                    // max_total_uncompressed_bytes
+);
+```
+**Result:** Error 10 (nvcompErrorInvalidValue)
 
-## Root Causes
+### 3. Minimal Test Program
+Created a standalone CUDA program that calls the exact same API - **also fails with error 10**.
 
-1. **API Documentation**: nvCOMP 5.0 documentation is incomplete or we're misunderstanding the batched API
-2. **Zstd Support**: Uncertain if nvCOMP 5.0 fully supports Zstd in batched mode
-3. **Driver Mismatch**: CUDA driver/runtime version mismatch preventing Manager API use
+## Observations
 
-## Proposed Solutions
+1. **All parameters are correct** according to nvCOMP 5.0 headers
+2. **CUDA operations succeed** (memory allocation, copies, stream creation)
+3. **Alignment requirements met** (queried via GetRequiredAlignments)
+4. **Manager API also fails** with "CUDA driver version insufficient" (but driver is 12.8, runtime is 12.8 - they match!)
+5. **Decompression also fails** with error 10
 
-### Option 1: CPU-Only Zstd (RECOMMENDED)
-**Use libzstd for both compression and decompression**
+## Possible Root Causes
 
-✅ Pros:
-- Guaranteed format compatibility
-- Well-documented, stable API
-- Works immediately
-- Simple fallback
+### Theory 1: nvCOMP 5.0 is Broken/Incomplete
+- The RMM (RAPIDS Memory Manager) errors in version strings suggest build issues
+- nvCOMP 5.0 might have been released with incomplete/broken Zstd support
+- The "CUDA driver insufficient" error is spurious (versions match)
 
-❌ Cons:
-- No GPU acceleration for decompression
-- Higher CPU load during inference
+### Theory 2: Missing Initialization
+- nvCOMP 5.0 might require some global initialization call we're not making
+- But the headers show no such function
 
-### Option 2: Use LZ4 with nvCOMP
-**Switch to LZ4 compression which is better supported in nvCOMP**
+### Theory 3: Build Configuration Issue
+- nvCOMP 5.0 was built against different CUDA toolkit version
+- Library incompatibility despite matching version numbers
 
-✅ Pros:
-- LZ4 is well-supported in nvCOMP 5.0
-- GPU acceleration for decompression
-- Fast compression/decompression
-
-❌ Cons:
-- Lower compression ratio than Zstd (~1.5-2x vs 3-4x)
-- Requires rewriting encoder/decoder
-- More testing needed
-
-### Option 3: Stick with rANS
-**Continue using the working rANS implementation**
-
-✅ Pros:
-- Already working and tested
-- Good compression ratios
-- CPU decoder is fast enough for now
-
-❌ Cons:
-- No GPU acceleration
-- More complex format
-
-### Option 4: Wait for nvCOMP Fix/Docs
-**Continue debugging nvCOMP 5.0 Zstd API**
-
-✅ Pros:
-- Best of both worlds if it works
-- GPU acceleration + good compression
-
-❌ Cons:
-- Uncertain if nvCOMP 5.0 supports Zstd batched API
-- Time-consuming to debug undocumented API
-- May not be solvable without NVIDIA support
+### Theory 4: Documentation/API Mismatch
+- The headers might not match the actual library implementation
+- nvCOMP 5.0 API might be in flux
 
 ## Recommendation
 
-**Go with Option 1 (CPU-Only Zstd) for now**:
-1. Disable nvCOMP GPU compression/decompression in `encoder_zstd.cpp` and `decoder_zstd.cpp`
-2. Use pure libzstd for both operations
-3. Keep the code structure so we can swap in GPU support later if nvCOMP issues are resolved
-4. Focus on getting the low-memory inference working end-to-end
-
-**Why this makes sense**:
-- The primary goal is **reducing VRAM usage**, not maximizing speed
-- Decompression happens once per layer per forward pass
-- With proper batching, CPU Zstd decompression overhead should be acceptable
-- Format compatibility is guaranteed
-- We can revisit GPU decompression after core functionality works
+**Downgrade to nvCOMP 3.0.6** which:
+- Has a simpler, more stable API
+- Was successfully used in many projects
+- Doesn't have the Manager API overhead
+- Should work with our code after minor API adjustments
 
 ## Next Steps
 
-1. Modify `encoder_zstd.cpp` and `decoder_zstd.cpp` to disable nvCOMP paths
-2. Test full inference pipeline with CPU Zstd
-3. Measure actual performance impact
-4. If decompression is a bottleneck, consider Option 2 (LZ4) or Option 3 (rANS)
+1. Remove nvCOMP 5.0
+2. Install nvCOMP 3.0.6 from NVIDIA archives
+3. Update `encoder_zstd.cpp` and `decoder_zstd.cpp` to use nvCOMP 3.0 API
+4. Test compression/decompression
 
-**User Decision Required**: Which option should we pursue?
+## nvCOMP 3.0 API Reference
 
+### Compression
+```c
+// Get temp size (simpler in 3.0)
+nvcompBatchedZstdCompressGetTempSize(
+    num_chunks,
+    max_chunk_size,
+    &temp_bytes
+);
+
+// Compress
+nvcompBatchedZstdCompressAsync(
+    device_in_ptrs,
+    device_in_bytes,
+    chunk_size,
+    num_chunks,
+    device_temp,
+    temp_bytes,
+    device_out_ptrs,
+    device_out_bytes,
+    stream
+);
+```
+
+### Decompression
+```c
+// Get temp size
+nvcompBatchedZstdDecompressGetTempSize(
+    num_chunks,
+    max_uncompressed_chunk_size,
+    &temp_bytes
+);
+
+// Decompress
+nvcompBatchedZstdDecompressAsync(
+    device_in_ptrs,
+    device_in_bytes,
+    device_out_bytes,
+    device_out_bytes_written,
+    num_chunks,
+    device_temp,
+    temp_bytes,
+    device_out_ptrs,
+    stream
+);
+```
+
+## Conclusion
+
+nvCOMP 5.0 appears to have fundamental issues with its Zstd implementation. We've exhausted all reasonable debugging approaches. Time to revert to a known-working version.
