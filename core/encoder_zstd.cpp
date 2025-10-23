@@ -59,7 +59,7 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         nvcompBatchedZstdCompressOpts_t opts = nvcompBatchedZstdCompressDefaultOpts;
 
         nvcompAlignmentRequirements_t align_req{};
-        nvcompStatus_t status_align = nvcompBatchedZstdCompressGetRequiredAlignments(&align_req);
+        nvcompStatus_t status_align = nvcompBatchedZstdCompressGetRequiredAlignments(opts, &align_req);
         if (status_align == nvcompSuccess) {
             fprintf(stderr, "[ENCODER] Alignment requirements: input=%zu, temp=%zu, output=%zu\n",
                    align_req.input, align_req.temp, align_req.output);
