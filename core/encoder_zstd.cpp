@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 #if __has_include(<nvcomp/zstd.h>)
     #include <nvcomp/zstd.h>
+    #include <nvcomp/nvcomp.h>
     #define USE_NVCOMP_ZSTD
 #endif
 #endif
@@ -55,8 +56,16 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         fprintf(stderr, "[ENCODER] Data uploaded to GPU\n");
         
         // Get compressed size (nvCOMP 5.0 API)
-        // NOTE: nvcompBatchedZstdCompressOpts_t appears to be empty in nvCOMP 5.0
-        nvcompBatchedZstdCompressOpts_t opts = {};
+        nvcompBatchedZstdCompressOpts_t opts = nvcompBatchedZstdCompressDefaultOpts;
+
+        nvcompAlignmentRequirements_t align_req{};
+        nvcompStatus_t status_align = nvcompBatchedZstdCompressGetRequiredAlignments(&align_req);
+        if (status_align == nvcompSuccess) {
+            fprintf(stderr, "[ENCODER] Alignment requirements: input=%zu, temp=%zu, output=%zu\n",
+                   align_req.input, align_req.temp, align_req.output);
+        } else {
+            fprintf(stderr, "[ENCODER] WARNING: Failed to query alignments: %d\n", status_align);
+        }
         
         size_t temp_size = 0;
         size_t max_comp_size = 0;
@@ -125,8 +134,8 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         //  max_uncompressed_chunk_bytes, opts, temp_bytes, max_total_uncompressed_bytes, stream)
         // Try with NULL pointers first - maybe it doesn't need actual data for temp size calculation
         status = nvcompBatchedZstdCompressGetTempSizeSync(
-            nullptr,  // Try NULL - maybe it only needs sizes, not actual data
-            nullptr,  // Try NULL
+            d_uncompressed_ptrs,
+            d_uncompressed_sizes,
             1,  // num_chunks
             uncompressed_size,  // max_uncompressed_chunk_bytes
             opts,
@@ -137,17 +146,16 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         
         fprintf(stderr, "[ENCODER] GetTempSizeSync returned status=%d, temp_size=%zu\n", status, temp_size);
         
-        cudaFree((void*)d_uncompressed_ptrs);
-        cudaFree(d_uncompressed_sizes);
-        
         if (status != nvcompSuccess) {
             fprintf(stderr, "[ENCODER] GetTempSizeSync failed: %d\n", status);
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_uncompressed_sizes);
             cudaFree(d_uncompressed);
             throw std::runtime_error("GetTempSizeSync failed");
         }
-        
+
         fprintf(stderr, "[ENCODER] Temp size: %zu bytes\n", temp_size);
-                
+
         // Allocate temp and output buffers
         void* d_temp = nullptr;
         void* d_compressed = nullptr;
@@ -155,6 +163,8 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         err = cudaMalloc(&d_temp, temp_size);
         if (err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] cudaMalloc d_temp failed: %s\n", cudaGetErrorString(err));
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_uncompressed_sizes);
             cudaFree(d_uncompressed);
             throw std::runtime_error("CUDA malloc failed");
         }
@@ -163,68 +173,47 @@ float ZstdEncoder::encodeLayer(const int8_t* data, uint32_t rows, uint32_t cols,
         if (err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] cudaMalloc d_compressed failed: %s\n", cudaGetErrorString(err));
             cudaFree(d_temp);
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_uncompressed_sizes);
             cudaFree(d_uncompressed);
             throw std::runtime_error("CUDA malloc failed");
         }
         
         fprintf(stderr, "[ENCODER] Allocated temp (%zu) and compressed (%zu) buffers\n", temp_size, max_comp_size);
         
-        // Allocate GPU memory for pointer/size arrays (for CompressAsync)
+        // Prepare compressed pointer arrays (GPU)
         void* h_compressed_ptrs[1] = {d_compressed};
         size_t h_compressed_sizes[1] = {0};
-        
-        d_uncompressed_ptrs = nullptr;
-        d_uncompressed_sizes = nullptr;
+
         void** d_compressed_ptrs = nullptr;
         size_t* d_compressed_sizes = nullptr;
-        
-        err = cudaMalloc(&d_uncompressed_ptrs, sizeof(void*));
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_ptrs (2nd) failed: %s\n", cudaGetErrorString(err));
-            cudaFree(d_temp);
-            cudaFree(d_compressed);
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("CUDA malloc failed");
-        }
-        
-        err = cudaMalloc(&d_uncompressed_sizes, sizeof(size_t));
-        if (err != cudaSuccess) {
-            fprintf(stderr, "[ENCODER] cudaMalloc d_uncompressed_sizes (2nd) failed: %s\n", cudaGetErrorString(err));
-            cudaFree((void*)d_uncompressed_ptrs);
-            cudaFree(d_temp);
-            cudaFree(d_compressed);
-            cudaFree(d_uncompressed);
-            throw std::runtime_error("CUDA malloc failed");
-        }
-        
+
         err = cudaMalloc(&d_compressed_ptrs, sizeof(void*));
         if (err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] cudaMalloc d_compressed_ptrs failed: %s\n", cudaGetErrorString(err));
-            cudaFree(d_uncompressed_sizes);
-            cudaFree((void*)d_uncompressed_ptrs);
             cudaFree(d_temp);
             cudaFree(d_compressed);
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_uncompressed_sizes);
             cudaFree(d_uncompressed);
             throw std::runtime_error("CUDA malloc failed");
         }
-        
+
         err = cudaMalloc(&d_compressed_sizes, sizeof(size_t));
         if (err != cudaSuccess) {
             fprintf(stderr, "[ENCODER] cudaMalloc d_compressed_sizes failed: %s\n", cudaGetErrorString(err));
             cudaFree(d_compressed_ptrs);
-            cudaFree(d_uncompressed_sizes);
-            cudaFree((void*)d_uncompressed_ptrs);
             cudaFree(d_temp);
             cudaFree(d_compressed);
+            cudaFree((void*)d_uncompressed_ptrs);
+            cudaFree(d_uncompressed_sizes);
             cudaFree(d_uncompressed);
             throw std::runtime_error("CUDA malloc failed");
         }
-        
-        cudaMemcpy(d_uncompressed_ptrs, h_uncompressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_uncompressed_sizes, h_uncompressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
+
         cudaMemcpy(d_compressed_ptrs, h_compressed_ptrs, sizeof(void*), cudaMemcpyHostToDevice);
         cudaMemcpy(d_compressed_sizes, h_compressed_sizes, sizeof(size_t), cudaMemcpyHostToDevice);
-        
+
         fprintf(stderr, "[ENCODER] Calling nvcompBatchedZstdCompressAsync...\n");
         
         // nvcompBatchedZstdCompressAsync signature (nvCOMP 5.0):

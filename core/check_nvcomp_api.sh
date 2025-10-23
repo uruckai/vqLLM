@@ -42,3 +42,13 @@ echo "6. nvcompBatchedZstdDecompressOpts_t structure:"
 echo "================================================"
 grep -B 5 -A 10 "nvcompBatchedZstdDecompressOpts_t" "$HEADER" | head -20
 
+echo ""
+echo "7. nvcompBatchedZstdCompressGetRequiredAlignments:"
+echo "================================================"
+grep -A 20 "nvcompBatchedZstdCompressGetRequiredAlignments" "$HEADER" | head -30
+
+echo ""
+echo "8. nvcompBatchedZstdDecompressGetRequiredAlignments:"
+echo "===================================================="
+grep -A 20 "nvcompBatchedZstdDecompressGetRequiredAlignments" "$HEADER" | head -30
+
