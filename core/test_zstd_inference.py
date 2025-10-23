@@ -243,8 +243,27 @@ class CompressedLinear(torch.nn.Module):
     
     def forward(self, x):
         """Decompress on-the-fly with GPU-direct decode (no CPU roundtrip!)"""
+        # DEBUG: Check compressed data on first call
+        if not hasattr(self, '_debug_compressed'):
+            print(f"[DEBUG DECOMPRESS] Compressed data info:")
+            print(f"  Type: {type(self.compressed)}")
+            print(f"  Length: {len(self.compressed)} bytes")
+            print(f"  First 20 bytes: {self.compressed[:20]}")
+            print(f"  Expected shape: {self.shape}")
+            self._debug_compressed = True
+        
         # GPU-DIRECT DECODE: decompress directly to GPU memory
-        gpu_ptr, rows, cols, dtype = self.decoder.decode_layer_to_gpu(self.compressed)
+        try:
+            gpu_ptr, rows, cols, dtype = self.decoder.decode_layer_to_gpu(self.compressed)
+            if not hasattr(self, '_debug_decode'):
+                print(f"[DEBUG DECODE] GPU decode returned:")
+                print(f"  gpu_ptr: {hex(gpu_ptr) if gpu_ptr else 'NULL'}")
+                print(f"  rows: {rows}, cols: {cols}")
+                print(f"  Expected: {self.shape}")
+                self._debug_decode = True
+        except Exception as e:
+            print(f"[ERROR] GPU decode failed: {e}")
+            raise
         
         # Copy GPU memory to PyTorch tensor
         # Create empty tensor on GPU
