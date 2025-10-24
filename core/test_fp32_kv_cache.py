@@ -137,11 +137,11 @@ class CompressedLinearFP32(torch.nn.Module):
         
         # Compute output
         if self.output_fp32:
-            # For K/V projections: compute in FP32 for cache stability
+            # For Q/K/V projections: compute in FP32 for cache stability and dtype matching
             output = torch.nn.functional.linear(x.float(), weight_fp.float(), 
                                                self.bias.float() if self.bias is not None else None)
         else:
-            # For Q/O projections: keep FP16
+            # For O projection: keep FP16 (faster, not cached)
             output = torch.nn.functional.linear(x, weight_fp, self.bias)
         
         del weight_fp, weight_int8
@@ -156,8 +156,8 @@ def replace_linear_with_compressed(module, compressed_weights, decoder):
         if isinstance(child, torch.nn.Linear):
             for compressed_name, compressed_data in compressed_weights.items():
                 if compressed_name.endswith('.' + name) or compressed_name == name:
-                    # Use FP32 output for K and V projections (they go into cache)
-                    output_fp32 = ('k_proj' in compressed_name or 'v_proj' in compressed_name)
+                    # Use FP32 output for Q/K/V projections (attention needs matching dtypes)
+                    output_fp32 = any(proj in compressed_name for proj in ['q_proj', 'k_proj', 'v_proj'])
                     
                     setattr(module, name, CompressedLinearFP32(
                         child, compressed_data, decoder, 
@@ -208,12 +208,12 @@ print()
 if baseline_text == compressed_text:
     print("✓✓✓ PERFECT MATCH! ✓✓✓")
     print()
-    print("SUCCESS: FP32 KV cache solves the problem!")
+    print("SUCCESS: FP32 attention solves the problem!")
     print()
     print("What worked:")
     print("  ✓ Compressed ALL attention layers (Q/K/V/O)")
-    print("  ✓ K/V projections output FP32 (stored in cache)")
-    print("  ✓ Q/O projections stay FP16 (not cached)")
+    print("  ✓ Q/K/V projections output FP32 (attention + cache stability)")
+    print("  ✓ O projection stays FP16 (faster, not cached)")
     print("  ✓ Cache enabled (fast generation)")
     print("  ✓ Perfect accuracy maintained")
     print()
