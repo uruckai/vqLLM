@@ -1,23 +1,67 @@
-# Core dependencies for Weight Codec
+# CodecLLM Requirements
+# GPU-accelerated LLM compression via on-the-fly decompression
 
-# PyTorch (adjust CUDA version as needed)
+# === Core Dependencies ===
+
+# PyTorch with CUDA support (REQUIRED)
 torch>=2.0.0
+
+# Transformers for LLM loading (REQUIRED)
+transformers>=4.30.0
+
+# NumPy for numerical operations (REQUIRED)
 numpy>=1.21.0
 
-# Model loading/saving
-safetensors>=0.4.0
+# Accelerate for efficient model loading (REQUIRED)
+accelerate>=0.20.0
 
-# Development and testing
+# HuggingFace Hub utilities (REQUIRED)
+huggingface-hub>=0.16.0
+
+# Optional: Fast model downloads (recommended)
+hf-transfer>=0.1.0
+
+# === External Dependencies (Not via pip) ===
+#
+# CRITICAL: nvCOMP 3.0.6 must be installed manually
+#   Download: https://developer.download.nvidia.com/compute/nvcomp/3.0.6/local_installers/nvcomp_3.0.6_x86_64_12.x.tgz
+#   Install: See SETUP.md or run ./setup.sh
+#
+# REQUIRED: CUDA Toolkit 11.8+ or 12.x
+#   Should be pre-installed on RunPod/cloud instances
+#
+# REQUIRED: CMake 3.18+ and GCC 9.0+
+#   Install: apt-get install cmake build-essential
+
+# === Development Dependencies (Optional) ===
+
+# Testing
 pytest>=7.0.0
+
+# Code formatting
 black>=23.0.0
 isort>=5.12.0
+
+# Linting
 flake8>=6.0.0
 
-# Optional: for accuracy evaluation integration
-# lm-eval>=0.4.0
-# transformers>=4.30.0
+# Model loading utilities
+safetensors>=0.4.0
 
-# Optional: for visualization/analysis
+# === Analysis & Visualization (Optional) ===
+
+# Uncomment if needed:
 # matplotlib>=3.5.0
 # seaborn>=0.12.0
+# lm-eval>=0.4.0
+
+# === Installation Notes ===
+#
+# For automated setup on Ubuntu/RunPod:
+#   git clone https://github.com/uruckai/vqLLM.git CodecLLM
+#   cd CodecLLM
+#   chmod +x setup.sh
+#   ./setup.sh
+#
+# For manual installation, see SETUP.md
 
