@@ -205,12 +205,21 @@ else
     
     print_step "Extracting and installing..."
     tar -xzf nvcomp_3.0.6_x86_64_12.x.tgz
-    cp -r nvcomp_3.0.6_x86_64_12.x/include/* /usr/local/include/
-    cp -r nvcomp_3.0.6_x86_64_12.x/lib/* /usr/local/lib/
+    
+    # The archive extracts directly (no subdirectory)
+    if [ -d "include" ] && [ -d "lib" ]; then
+        cp -r include/* /usr/local/include/
+        cp -r lib/* /usr/local/lib/
+    else
+        print_error "nvCOMP structure not as expected"
+        ls -la
+        exit 1
+    fi
+    
     ldconfig
     
     # Clean up
-    rm -rf nvcomp_3.0.6_x86_64_12.x nvcomp_3.0.6_x86_64_12.x.tgz
+    rm -rf include lib bin doc *.md LICENSE NOTICE nvcomp_3.0.6_x86_64_12.x.tgz
     
     print_success "nvCOMP installed"
 fi

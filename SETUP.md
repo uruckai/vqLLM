@@ -98,10 +98,18 @@ apt-get install -y git cmake build-essential wget
 cd /tmp
 wget https://developer.download.nvidia.com/compute/nvcomp/3.0.6/local_installers/nvcomp_3.0.6_x86_64_12.x.tgz
 tar -xzf nvcomp_3.0.6_x86_64_12.x.tgz
-cp -r nvcomp_3.0.6_x86_64_12.x/include/* /usr/local/include/
-cp -r nvcomp_3.0.6_x86_64_12.x/lib/* /usr/local/lib/
+
+# Note: The archive extracts directly (no subdirectory)
+cp -r include/* /usr/local/include/
+cp -r lib/* /usr/local/lib/
 ldconfig
-rm -rf nvcomp_3.0.6_x86_64_12.x*
+
+# Clean up
+rm -rf include lib bin doc *.md LICENSE NOTICE nvcomp_3.0.6_x86_64_12.x.tgz
+
+# Verify installation
+ldconfig -p | grep nvcomp
+# Should show: libnvcomp.so, libnvcomp_gdeflate.so, etc.
 ```
 
 ### Step 4: Install Python Dependencies
