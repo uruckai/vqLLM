@@ -36,22 +36,32 @@ tokenizer = AutoTokenizer.from_pretrained(model_name, clean_up_tokenization_spac
 
 # Test 1: Baseline with cache
 print("[1/4] Baseline WITH cache...")
+torch.cuda.reset_peak_memory_stats()
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, low_cpu_mem_usage=True).to(device)
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
 with torch.no_grad():
+    t0 = time.time()
     outputs = model.generate(**inputs, max_new_tokens=10, do_sample=False, 
                            pad_token_id=tokenizer.eos_token_id, use_cache=True)
+    t_baseline_cached = time.time() - t0
 baseline_cached = tokenizer.decode(outputs[0], skip_special_tokens=True)
+vram_baseline_cached = torch.cuda.max_memory_allocated() / 1024**3
 print(f"  Output: '{baseline_cached}'")
+print(f"  Time: {t_baseline_cached:.2f}s, VRAM: {vram_baseline_cached:.2f} GB")
 print()
 
 # Test 2: Baseline WITHOUT cache
 print("[2/4] Baseline WITHOUT cache...")
+torch.cuda.reset_peak_memory_stats()
 with torch.no_grad():
+    t0 = time.time()
     outputs = model.generate(**inputs, max_new_tokens=10, do_sample=False, 
                            pad_token_id=tokenizer.eos_token_id, use_cache=False)
+    t_baseline_no_cache = time.time() - t0
 baseline_no_cache = tokenizer.decode(outputs[0], skip_special_tokens=True)
+vram_baseline_no_cache = torch.cuda.max_memory_allocated() / 1024**3
 print(f"  Output: '{baseline_no_cache}'")
+print(f"  Time: {t_baseline_no_cache:.2f}s, VRAM: {vram_baseline_no_cache:.2f} GB")
 print()
 
 if baseline_cached != baseline_no_cache:
@@ -134,24 +144,31 @@ for name, child in model.named_modules():
 torch.cuda.empty_cache()
 
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
+torch.cuda.reset_peak_memory_stats()
 with torch.no_grad():
+    t0 = time.time()
     outputs = model.generate(**inputs, max_new_tokens=10, do_sample=False, 
                            pad_token_id=tokenizer.eos_token_id, use_cache=True)
+    t_compressed_cached = time.time() - t0
 compressed_cached = tokenizer.decode(outputs[0], skip_special_tokens=True)
+vram_compressed_cached = torch.cuda.max_memory_allocated() / 1024**3
 print(f"  Output: '{compressed_cached}'")
+print(f"  Time: {t_compressed_cached:.2f}s, VRAM: {vram_compressed_cached:.2f} GB")
 print()
 
 # Test 4: Same compressed layer, but WITHOUT cache
 print("[4/4] Same 1 compressed layer, testing WITHOUT cache...")
 inputs = tokenizer(prompt, return_tensors="pt").to(device)
+torch.cuda.reset_peak_memory_stats()
 with torch.no_grad():
     t0 = time.time()
     outputs = model.generate(**inputs, max_new_tokens=10, do_sample=False, 
                            pad_token_id=tokenizer.eos_token_id, use_cache=False)
-    t_no_cache = time.time() - t0
+    t_compressed_no_cache = time.time() - t0
 compressed_no_cache = tokenizer.decode(outputs[0], skip_special_tokens=True)
+vram_compressed_no_cache = torch.cuda.max_memory_allocated() / 1024**3
 print(f"  Output: '{compressed_no_cache}'")
-print(f"  Time: {t_no_cache:.2f}s")
+print(f"  Time: {t_compressed_no_cache:.2f}s, VRAM: {vram_compressed_no_cache:.2f} GB")
 print()
 
 # Analysis
@@ -160,9 +177,16 @@ print("RESULTS")
 print("="*80)
 print()
 print(f"Baseline (cache=True):       '{baseline_cached}'")
+print(f"  Time: {t_baseline_cached:.2f}s, VRAM: {vram_baseline_cached:.2f} GB")
+print()
 print(f"Baseline (cache=False):      '{baseline_no_cache}'")
+print(f"  Time: {t_baseline_no_cache:.2f}s, VRAM: {vram_baseline_no_cache:.2f} GB")
+print()
 print(f"Compressed (cache=True):     '{compressed_cached}'")
+print(f"  Time: {t_compressed_cached:.2f}s, VRAM: {vram_compressed_cached:.2f} GB")
+print()
 print(f"Compressed (cache=False):    '{compressed_no_cache}'")
+print(f"  Time: {t_compressed_no_cache:.2f}s, VRAM: {vram_compressed_no_cache:.2f} GB")
 print()
 
 if compressed_no_cache == baseline_no_cache:
