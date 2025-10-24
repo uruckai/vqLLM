@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.18)
-project(CodecCore LANGUAGES CXX)
+project(CodecCore LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
 
-# Find CUDA (for nvCOMP compatibility)
-find_package(CUDAToolkit)
+# Find CUDA
+find_package(CUDAToolkit REQUIRED)
 
 # Try to find Zstd (required for Zstd encoder/decoder)
 find_package(PkgConfig)
@@ -73,24 +74,45 @@ else()
     message(STATUS "nvCOMP not found - Zstd will use CPU fallback")
 endif()
 
-# Source files (Zstd implementation only)
+# Source files (minimal set for Zstd)
 set(SOURCES
-    c_api_zstd.cpp
+    encoder_simple.cpp
+    decoder_host.cpp
+    rans.cpp
+    c_api.cpp
 )
+
+# Add batched rANS files if requested (legacy, not needed for Zstd)
+option(BUILD_RANS_BATCHED "Build rANS batched encoder/decoder (legacy)" OFF)
+if(BUILD_RANS_BATCHED)
+    list(APPEND SOURCES
+        encoder_batched.cpp
+        decoder_batched_cpu.cpp
+        decoder_batched.cpp
+        c_api_batched.cpp
+    )
+endif()
 
 # Add Zstd files if Zstd is available
 if(ZSTD_FOUND)
     list(APPEND SOURCES
         encoder_zstd_v3.cpp
         decoder_zstd_v3.cpp
+        c_api_zstd.cpp
     )
     message(STATUS "Zstd support enabled (using nvCOMP 3.0.6 API)")
 else()
     message(WARNING "Zstd not found - Zstd encoder/decoder will not be built")
 endif()
 
-# CUDA sources (none needed for pure Zstd implementation)
-set(CUDA_SOURCES "")
+set(CUDA_SOURCES
+    decoder_gpu.cu
+)
+
+# Add batched CUDA decoder if rANS batched is enabled
+if(BUILD_RANS_BATCHED)
+    list(APPEND CUDA_SOURCES decoder_batched.cu)
+endif()
 
 # Build shared library
 add_library(codec_core SHARED
@@ -101,6 +123,7 @@ add_library(codec_core SHARED
 # Include directories
 target_include_directories(codec_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
 )
 
 if(ZSTD_FOUND)
@@ -113,8 +136,10 @@ if(NVCOMP_FOUND)
     target_include_directories(codec_core PUBLIC ${NVCOMP_INCLUDE_DIR})
 endif()
 
-# Link libraries (no CUDA needed for pure Zstd implementation)
-# CUDA runtime is handled by nvCOMP internally
+# Link CUDA libraries
+target_link_libraries(codec_core
+    CUDA::cudart
+)
 
 # Link Zstd if available
 if(ZSTD_FOUND)
@@ -126,8 +151,9 @@ if(NVCOMP_FOUND)
     target_link_libraries(codec_core ${NVCOMP_LIBRARY})
 endif()
 
-# Set library properties
+# CUDA architectures (5090 = Ada/Blackwell = sm_90)
 set_target_properties(codec_core PROPERTIES
+    CUDA_ARCHITECTURES "80;86;89;90"
     POSITION_INDEPENDENT_CODE ON
 )
 
@@ -137,7 +163,6 @@ set_target_properties(codec_core PROPERTIES
 )
 
 message(STATUS "Codec Core Configuration:")
-message(STATUS "  Implementation: Zstd via nvCOMP")
-message(STATUS "  Zstd Support: ${ZSTD_FOUND}")
-message(STATUS "  nvCOMP Support: ${NVCOMP_FOUND}")
+message(STATUS "  CUDA Version: ${CUDAToolkit_VERSION}")
+message(STATUS "  CUDA Architectures: 80;86;89;90")
 
