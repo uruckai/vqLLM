@@ -836,3 +836,101 @@ cd /workspace/CodecLLM/core && python test_zstd_inference.py
 - VRAM usage stable
 
 **The hard technical problems are solved.** Focus on scaling layer coverage and optimizing quantization accuracy! 🎯
+
+---
+
+## 🏛️ **Architecture Evolution & Reusability**
+
+### **From rANS to Zstd: What Can Be Reused**
+
+The original rANS implementation provides valuable learning but requires significant changes for the fused decode-compute approach:
+
+#### **✅ 100% Reusable Components:**
+- **Compression Format & Encoder:** Same tile-based format works for both approaches
+- **Core Decompression Logic:** 80% of decoder logic is reusable
+- **Python Bindings:** Interface remains the same
+- **Test Infrastructure:** Roundtrip and integration tests are reusable
+
+#### **🔄 Modified Components:**
+- **GPU Kernels:** Need fusion with compute (attention/MLP operations)
+- **Memory Management:** Switch from separate decode/compute to fused pipeline
+- **Caching Strategy:** Per-forward-pass caching vs persistent KV cache
+
+#### **❌ Not Reusable:**
+- **Container Format:** Need direct GPU access, not file I/O
+- **CPU Fallback:** Must be GPU-only for performance
+
+### **Migration Path:**
+1. **Phase 1:** Reuse existing encoder + decoder for weight compression
+2. **Phase 2:** Adapt GPU kernels for fused decode-compute
+3. **Phase 3:** Implement per-forward-pass caching strategy
+
+**The rANS work is a valuable proof-of-concept that validates the compression approach, even if the implementation needs adaptation for the fused architecture.**
+
+---
+
+## 📚 **Consolidated Reference Documentation**
+
+### **Key Technical Insights:**
+- **Error Amplification:** Tiny numerical differences in attention layers compound exponentially through KV cache
+- **Numerical Stability:** FP32 precision in attention computation prevents error growth
+- **GPU Acceleration:** nvCOMP provides 10-100x speedup over CPU compression
+- **Memory Layout:** Consistent tensor strides and memory alignment are critical
+
+### **Performance Characteristics:**
+- **Compression Ratio:** 2.0-2.3x on attention weights, higher on MLP layers
+- **Decode Latency:** ~1ms per layer (GPU) vs ~10ms (CPU)
+- **Memory Overhead:** ~18MB for FP32 KV cache (100 tokens)
+- **Speed Impact:** 10-15% overhead for attention layers, negligible for MLP
+
+### **Integration Patterns:**
+- **Layer Replacement:** Works reliably with proper dtype matching
+- **Cache Management:** FP32 for K/V, FP16 for other computations
+- **Error Handling:** Graceful fallback to CPU decoding if GPU fails
+
+### **Performance Analysis:**
+- **Compression Speed:** ~1ms per layer (GPU) vs ~10ms (CPU)
+- **Memory Impact:** 10-15% speed overhead for attention layers
+- **Scalability:** Decompression cost amortized over sequence length
+- **Trade-offs:** Slower per-token generation enables larger batch sizes
+
+#### **Speed vs Memory Trade-off:**
+```
+Configuration      | Tokens/Sec | VRAM Usage | Use Case
+-------------------|------------|------------|----------
+Baseline           | 100%       | 2.1 GB     | Standard inference
+FP32 KV Cache      | ~85%       | 1.7 GB     | Memory-constrained
+No Cache (working) | ~0.4%      | 1.7 GB     | Maximum memory savings
+```
+
+**The current FP32 KV cache solution provides the best balance of speed, memory, and accuracy.**
+
+### **Quantization Strategy:**
+- **Per-channel quantization** (row-wise scales) for optimal accuracy
+- **INT8 range:** [-127, 127] with proper scaling per output channel
+- **Scale computation:** `scales = abs(weight).max(axis=1) / 127.0`
+- **Dequantization:** `weight_fp16 = weight_int8 * scales.view(-1, 1)`
+
+**Why per-channel matters:** Each output channel has different magnitude ranges. Per-tensor quantization (single scale) destroys accuracy by over-quantizing some channels and under-quantizing others.
+
+### **Caching Strategies Evaluated:**
+
+1. **No Cache:** Perfect accuracy but 265x slower (decompress every forward pass)
+2. **Full Cache:** Fast but doubles memory usage (cache all decompressed weights)
+3. **Per-Forward-Pass Cache:** Hybrid approach with layer-level caching
+4. **FP32 KV Cache:** Current solution - cache K/V in FP32, compress weights
+
+**The FP32 KV cache provides the optimal balance of speed, memory, and accuracy.**
+
+### **Implementation Approaches Considered:**
+
+1. **Compute on Compressed Weights:** Not practical (requires rewriting all operations)
+2. **Decode at Load Time:** Saves disk space but uses same VRAM as baseline
+3. **Decode Per-Forward-Pass:** Maximum memory savings but slow (265x)
+4. **GPU-Direct Decode:** Current approach - decompress just-in-time with FP32 cache
+
+**The GPU-direct approach with FP32 KV cache achieves the best practical balance.**
+
+---
+
+## 🚀 Quick Start for Next Engineer
