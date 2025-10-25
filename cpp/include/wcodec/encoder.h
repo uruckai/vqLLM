@@ -36,8 +36,10 @@ public:
      */
     void setTileSize(size_t rows, size_t cols);
 
-private:
+protected:
     TileConfig config_;
+
+private:
     
     // Helper: encode single tile
     void encodeTile(

@@ -108,7 +108,7 @@ public:
         std::vector<uint8_t> h_predictor_modes(num_tiles);
         
         for (int i = 0; i < num_tiles; ++i) {
-            std::memcpy(&h_freq_tables[i * 256], layer.tiles[i].freq_table, 256 * sizeof(uint32_t));
+            memcpy(&h_freq_tables[i * 256], layer.tiles[i].freq_table, 256 * sizeof(uint32_t));
             h_tile_offsets[i] = layer.tiles[i].compressed_offset;
             h_tile_sizes[i] = layer.tiles[i].compressed_size;
             h_predictor_modes[i] = layer.tiles[i].predictor_mode;
