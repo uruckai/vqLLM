@@ -60,10 +60,10 @@ set(WCODEC_SOURCES
 # CUDA sources (Week 4+6)
 if(CUDA_AVAILABLE)
     set(WCODEC_CUDA_SOURCES
-        cuda/rans_decode.cu
-        cuda/predictor_reconstruct.cu
-        cuda/transform.cu
-        cuda/rans_decode_full.cu
+        core/archive/cuda/rans_decode.cu
+        core/archive/cuda/predictor_reconstruct.cu
+        core/archive/cuda/transform.cu
+        core/archive/cuda/rans_decode_full.cu
     )
     set_source_files_properties(${WCODEC_CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)
 endif()
@@ -73,7 +73,7 @@ if(CUDA_AVAILABLE)
     add_library(wcodec SHARED ${WCODEC_SOURCES} ${WCODEC_CUDA_SOURCES})
     target_include_directories(wcodec PUBLIC 
         ${CMAKE_SOURCE_DIR}/cpp/include
-        ${CMAKE_SOURCE_DIR}/cuda
+        ${CMAKE_SOURCE_DIR}/core/archive/cuda
     )
     target_link_libraries(wcodec PRIVATE CUDA::cudart)
     set_target_properties(wcodec PROPERTIES
