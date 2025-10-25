@@ -27,25 +27,27 @@ if not lib_path.exists():
 
 lib = ctypes.CDLL(str(lib_path))
 
-# Set return types (like backup does)
-lib.encoder_create.restype = ctypes.c_void_p
-lib.encoder_create.argtypes = [ctypes.c_uint16]
-lib.encoder_destroy.argtypes = [ctypes.c_void_p]
-lib.encoder_encode.argtypes = [
+# Set return types (exact C API function names)
+lib.wcodec_encoder_create.restype = ctypes.c_void_p
+lib.wcodec_encoder_create.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
+lib.wcodec_encoder_destroy.argtypes = [ctypes.c_void_p]
+lib.wcodec_encode_layer.argtypes = [
     ctypes.c_void_p,
     ctypes.POINTER(ctypes.c_int8),
-    ctypes.c_uint32,
-    ctypes.c_uint32,
+    ctypes.c_size_t,
+    ctypes.c_size_t,
     ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8)),
-    ctypes.POINTER(ctypes.c_size_t)
+    ctypes.POINTER(ctypes.c_size_t),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double)
 ]
-lib.encoder_encode.restype = ctypes.c_float
-lib.free_buffer.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+lib.wcodec_encode_layer.restype = ctypes.c_int
+lib.wcodec_free_buffer.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
 
-lib.decoder_create.restype = ctypes.c_void_p
-lib.decoder_create.argtypes = []
-lib.decoder_destroy.argtypes = [ctypes.c_void_p]
-lib.decoder_is_available.restype = ctypes.c_bool
+lib.wcodec_decoder_create.restype = ctypes.c_void_p
+lib.wcodec_decoder_create.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
+lib.wcodec_decoder_destroy.argtypes = [ctypes.c_void_p]
+lib.wcodec_gpu_is_available.restype = ctypes.c_int
 
 print("✓ Library loaded")
 print()
@@ -61,7 +63,7 @@ print(f"  Input: range=[{test_int8.min()}, {test_int8.max()}]")
 
 try:
     # CRITICAL: Create encoder for THIS tile only (like backup)
-    encoder = lib.encoder_create(tile_size)
+    encoder = lib.wcodec_encoder_create(tile_size, tile_size)
     if not encoder:
         raise RuntimeError("Failed to create encoder")
     
@@ -69,18 +71,26 @@ try:
     data_ptr = test_int8.ctypes.data_as(ctypes.POINTER(ctypes.c_int8))
     output_ptr = ctypes.POINTER(ctypes.c_uint8)()
     output_size = ctypes.c_size_t()
+    compression_ratio = ctypes.c_double()
+    encode_time = ctypes.c_double()
     
-    result = lib.encoder_encode(
+    result = lib.wcodec_encode_layer(
         encoder,
         data_ptr,
         tile_size,
         tile_size,
         ctypes.byref(output_ptr),
-        ctypes.byref(output_size)
+        ctypes.byref(output_size),
+        ctypes.byref(compression_ratio),
+        ctypes.byref(encode_time)
     )
     
+    if result != 0:
+        raise RuntimeError(f"Encode failed with code {result}")
+    
     print(f"  Compressed: {test_int8.nbytes} → {output_size.value} bytes")
-    print(f"  Ratio: {test_int8.nbytes / output_size.value:.2f}x")
+    print(f"  Ratio: {compression_ratio.value:.2f}x")
+    print(f"  Time: {encode_time.value:.2f}ms")
     
     # Copy compressed data
     compressed = bytes(ctypes.cast(
@@ -89,8 +99,8 @@ try:
     ).contents)
     
     # CRITICAL: Free and destroy immediately (like backup)
-    lib.free_buffer(output_ptr)
-    lib.encoder_destroy(encoder)
+    lib.wcodec_free_buffer(output_ptr)
+    lib.wcodec_encoder_destroy(encoder)
     
     print(f"  ✓ Compression successful")
     
