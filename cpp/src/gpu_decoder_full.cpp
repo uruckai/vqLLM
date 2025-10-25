@@ -7,6 +7,7 @@
 #include "wcodec/encoder_gpu.h"
 #include <chrono>
 #include <stdexcept>
+#include <cstring>
 
 #ifdef WCODEC_CUDA_ENABLED
 #include <cuda_runtime.h>
