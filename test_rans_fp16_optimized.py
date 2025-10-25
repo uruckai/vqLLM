@@ -19,11 +19,11 @@ print()
 
 # Configuration
 NUM_LAYERS_TO_COMPRESS = 5
-TILE_SIZE = 512  # Increased from 256 (2x less tiles = 2x less overhead)
+TILE_SIZE = 256  # Optimal for GPU parallelization (176 tiles per layer)
 
 print(f"Configuration:")
 print(f"  Layers: {NUM_LAYERS_TO_COMPRESS}")
-print(f"  Tile size: {TILE_SIZE}x{TILE_SIZE} (optimized)")
+print(f"  Tile size: {TILE_SIZE}x{TILE_SIZE} (GPU-optimized)")
 print()
 
 # Load codec library
