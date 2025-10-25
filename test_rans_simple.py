@@ -38,13 +38,14 @@ except ImportError as e:
 print()
 print("Step 2: Load codec library...")
 try:
-    encoder = bindings.Encoder()
-    decoder = bindings.Decoder()
-    gpu_decoder = bindings.GPUDecoder() if bindings.is_gpu_available() else None
+    # Use larger tile size (256) to reduce memory overhead
+    encoder = bindings.Encoder(tile_size=256)
+    decoder = bindings.Decoder(tile_size=256)
+    gpu_decoder = bindings.GPUDecoder(tile_size=256) if bindings.is_gpu_available() else None
 
     print("✓ Loaded rANS codec")
-    print(f"  CPU encoder: {type(encoder).__name__}")
-    print(f"  CPU decoder: {type(decoder).__name__}")
+    print(f"  CPU encoder: {type(encoder).__name__} (tile_size=256)")
+    print(f"  CPU decoder: {type(decoder).__name__} (tile_size=256)")
     print(f"  GPU decoder: {'Available' if gpu_decoder else 'Not available'}")
 except Exception as e:
     print(f"✗ Failed to load codec: {e}")
@@ -55,8 +56,8 @@ except Exception as e:
 print()
 print("Step 3: Test compression round-trip...")
 try:
-    # Create test data
-    test_data = np.random.randn(2048, 2048).astype(np.float16)
+    # Create test data - START SMALL to avoid OOM
+    test_data = np.random.randn(512, 512).astype(np.float16)
     print(f"  Original: shape={test_data.shape}, dtype={test_data.dtype}")
 
     # Quantize to INT8

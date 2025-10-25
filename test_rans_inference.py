@@ -29,13 +29,14 @@ print()
 # Load rANS codec
 try:
     from wcodec import bindings
-    encoder = bindings.Encoder()
-    decoder = bindings.Decoder()
-    gpu_decoder = bindings.GPUDecoder() if bindings.is_gpu_available() else None
+    # Use larger tile size (256) to reduce memory overhead
+    encoder = bindings.Encoder(tile_size=256)
+    decoder = bindings.Decoder(tile_size=256)
+    gpu_decoder = bindings.GPUDecoder(tile_size=256) if bindings.is_gpu_available() else None
 
     print("✓ Loaded rANS codec")
-    print(f"  CPU encoder: {type(encoder).__name__}")
-    print(f"  CPU decoder: {type(decoder).__name__}")
+    print(f"  CPU encoder: {type(encoder).__name__} (tile_size=256)")
+    print(f"  CPU decoder: {type(decoder).__name__} (tile_size=256)")
     print(f"  GPU decoder: {'Available' if gpu_decoder else 'Not available'}")
 except ImportError as e:
     print(f"✗ Cannot load rANS codec: {e}")
