@@ -29,8 +29,14 @@ print()
 # Load rANS codec
 try:
     from wcodec import bindings
-    codec = bindings.WCodec()
+    encoder = bindings.Encoder()
+    decoder = bindings.Decoder()
+    gpu_decoder = bindings.GPUDecoder() if bindings.is_gpu_available() else None
+
     print("✓ Loaded rANS codec")
+    print(f"  CPU encoder: {type(encoder).__name__}")
+    print(f"  CPU decoder: {type(decoder).__name__}")
+    print(f"  GPU decoder: {'Available' if gpu_decoder else 'Not available'}")
 except ImportError as e:
     print(f"✗ Cannot load rANS codec: {e}")
     print()
@@ -80,10 +86,11 @@ scale = np.abs(weight).max() / 127.0
 weight_int8 = np.clip(np.round(weight / scale), -127, 127).astype(np.int8)
 
 # Compress with rANS
-compressed = codec.encode(weight_int8)
-ratio = weight_int8.nbytes / len(compressed)
+compressed_bytes, stats = encoder.encode_layer(weight_int8)
+ratio = weight_int8.nbytes / len(compressed_bytes)
 
-print(f"  Compressed: {weight_int8.nbytes/1024**2:.1f} MB → {len(compressed)/1024**2:.1f} MB ({ratio:.2f}x)")
+print(f"  Compressed: {weight_int8.nbytes/1024**2:.1f} MB → {len(compressed_bytes)/1024**2:.1f} MB ({ratio:.2f}x)")
+print(f"  rANS ratio: {stats['compression_ratio']:.2f}x")
 print()
 
 # Create compressed layer
@@ -93,26 +100,26 @@ class CompressedLinearRANS(torch.nn.Module):
         self.compressed = compressed_data
         self.codec = codec_handle
         self.shape = shape
-        
+
         scale_tensor = torch.tensor(scale_val, dtype=torch.float16, device=device)
         self.register_buffer('scale', scale_tensor)
-        
+
         if original_module.bias is not None:
             self.register_buffer('bias', original_module.bias.data.clone())
         else:
             self.bias = None
-    
+
     def forward(self, x):
         # Decode with rANS
-        weight_int8 = self.codec.decode(self.compressed, self.shape)
+        weight_int8, _ = self.codec.decode_layer(self.compressed, self.shape[0], self.shape[1])
         weight_tensor = torch.from_numpy(weight_int8).to(device)
-        
+
         # Dequantize
         weight_fp = weight_tensor.to(torch.float16) * self.scale
-        
+
         # Forward
         output = torch.nn.functional.linear(x, weight_fp, self.bias)
-        
+
         del weight_fp, weight_tensor
         return output
 
@@ -125,7 +132,7 @@ for n, child in model.named_modules():
         for part in parent_name.split('.'):
             if part:
                 parent = getattr(parent, part)
-        setattr(parent, child_name, CompressedLinearRANS(child, compressed, codec, scale, weight.shape))
+        setattr(parent, child_name, CompressedLinearRANS(child, compressed_bytes, decoder, scale, weight.shape))
         break
 
 torch.cuda.empty_cache()

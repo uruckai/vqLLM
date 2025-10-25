@@ -38,8 +38,14 @@ except ImportError as e:
 print()
 print("Step 2: Load codec library...")
 try:
-    codec = bindings.WCodec()
+    encoder = bindings.Encoder()
+    decoder = bindings.Decoder()
+    gpu_decoder = bindings.GPUDecoder() if bindings.is_gpu_available() else None
+
     print("✓ Loaded rANS codec")
+    print(f"  CPU encoder: {type(encoder).__name__}")
+    print(f"  CPU decoder: {type(decoder).__name__}")
+    print(f"  GPU decoder: {'Available' if gpu_decoder else 'Not available'}")
 except Exception as e:
     print(f"✗ Failed to load codec: {e}")
     import traceback
@@ -52,21 +58,23 @@ try:
     # Create test data
     test_data = np.random.randn(2048, 2048).astype(np.float16)
     print(f"  Original: shape={test_data.shape}, dtype={test_data.dtype}")
-    
+
     # Quantize to INT8
     scale = np.abs(test_data).max() / 127.0
     test_int8 = np.clip(np.round(test_data / scale), -127, 127).astype(np.int8)
     print(f"  Quantized: range=[{test_int8.min()}, {test_int8.max()}]")
-    
-    # Compress
-    compressed = codec.encode(test_int8)
-    ratio = test_int8.nbytes / len(compressed)
-    print(f"  Compressed: {test_int8.nbytes} → {len(compressed)} bytes ({ratio:.2f}x)")
-    
-    # Decompress
-    decoded = codec.decode(compressed, test_int8.shape)
+
+    # Compress with rANS
+    compressed_bytes, stats = encoder.encode_layer(test_int8)
+    ratio = test_int8.nbytes / len(compressed_bytes)
+    print(f"  Compressed: {test_int8.nbytes} → {len(compressed_bytes)} bytes ({ratio:.2f}x)")
+    print(f"  rANS ratio: {stats['compression_ratio']:.2f}x")
+    print(f"  Compression: {stats['compression_percent']:.1f}%")
+
+    # Decompress with rANS
+    decoded, decode_stats = decoder.decode_layer(compressed_bytes, test_int8.shape[0], test_int8.shape[1])
     print(f"  Decoded: shape={decoded.shape}, dtype={decoded.dtype}")
-    
+
     # Verify
     if np.array_equal(test_int8, decoded):
         print("✓ Bit-exact round-trip")
@@ -74,7 +82,7 @@ try:
         print("✗ Decode mismatch")
         diff = np.abs(test_int8.astype(np.int32) - decoded.astype(np.int32)).max()
         print(f"  Max difference: {diff}")
-    
+
 except Exception as e:
     print(f"✗ Compression test failed: {e}")
     import traceback
@@ -85,41 +93,44 @@ print()
 print("Step 4: Test with LLM weights...")
 try:
     from transformers import AutoModelForCausalLM
-    
+
     print("  Loading TinyLlama...")
     model = AutoModelForCausalLM.from_pretrained(
         "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
         torch_dtype=torch.float16,
         low_cpu_mem_usage=True
     )
-    
+
     # Get first linear layer
     for name, module in model.named_modules():
         if isinstance(module, torch.nn.Linear):
             print(f"  Testing layer: {name}")
             weight = module.weight.data.cpu().numpy()
             print(f"    Shape: {weight.shape}, dtype: {weight.dtype}")
-            
+
             # Quantize
             scale = np.abs(weight).max() / 127.0
             weight_int8 = np.clip(np.round(weight / scale), -127, 127).astype(np.int8)
-            
-            # Compress
-            compressed = codec.encode(weight_int8)
-            ratio = weight_int8.nbytes / len(compressed)
-            print(f"    Compressed: {weight_int8.nbytes/1024:.1f} KB → {len(compressed)/1024:.1f} KB ({ratio:.2f}x)")
-            
-            # Decompress
-            decoded = codec.decode(compressed, weight_int8.shape)
-            
+
+            # Compress with rANS
+            compressed_bytes, stats = encoder.encode_layer(weight_int8)
+            ratio = weight_int8.nbytes / len(compressed_bytes)
+            print(f"    Compressed: {weight_int8.nbytes/1024:.1f} KB → {len(compressed_bytes)/1024:.1f} KB ({ratio:.2f}x)")
+            print(f"    rANS ratio: {stats['compression_ratio']:.2f}x")
+
+            # Decompress with rANS
+            decoded, decode_stats = decoder.decode_layer(compressed_bytes, weight_int8.shape[0], weight_int8.shape[1])
+
             # Verify
             if np.array_equal(weight_int8, decoded):
                 print(f"    ✓ Bit-exact decode")
             else:
                 print(f"    ✗ Decode mismatch")
-            
+                diff = np.abs(weight_int8.astype(np.int32) - decoded.astype(np.int32)).max()
+                print(f"    Max difference: {diff}")
+
             break
-    
+
 except Exception as e:
     print(f"  ✗ LLM test failed: {e}")
     import traceback
