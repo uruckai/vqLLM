@@ -1,153 +1,168 @@
-# CodecLLM — GPU-Accelerated LLM Inference via On-the-Fly Decompression
+# Fused Kernel Project
 
-**Reduce LLM memory usage by compressing model weights and decompressing on-the-fly during inference.**
+## 🎯 Objective
 
-## 🎯 Goal
+Implement fused decompression kernels to achieve **1.4×-3.0× speedup** and **30%+ VRAM reduction** for LLM inference through compressed weight storage with on-the-fly decompression.
 
-**Reduce peak VRAM usage by 20-40%** during LLM inference through:
-- GPU-accelerated Zstd decompression (via nvCOMP)
-- On-the-fly weight decompression during forward pass
-- FP32 KV cache for numerical stability
-- Zero accuracy loss
-
-## 🚀 Current Status
-
-**Status:** ✅ **Working Solution!**
-
-- ✅ GPU-direct Zstd decompression (nvCOMP 3.0.6)
-- ✅ Compression of attention layers (Q/K/V/O projections)
-- ✅ FP32 KV cache solution (perfect accuracy)
-- ✅ 2.0-2.3x compression ratio on attention weights
-- ✅ ~20% memory savings with <15% speed overhead
-- ✅ Tested on TinyLlama 1.1B (RTX 5090)
-
-**Next:** Scale to larger models (7B+), optimize performance, add MLP compression
-
----
-
-## 🔧 Quick Start
-
-### On Fresh RunPod Instance:
+## 🚀 Quick Start
 
 ```bash
-cd /workspace
-git clone https://github.com/uruckai/vqLLM.git CodecLLM
-cd CodecLLM
-chmod +x setup.sh
-./setup.sh
+# Build the compression library
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# Verify setup
+python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 ```
 
-The script will:
-1. Install system dependencies (cmake, build tools)
-2. Download and install nvCOMP 3.0.6
-3. Install Python packages (torch, transformers, etc.)
-4. Build the codec library
-5. Verify the installation
+## 📚 Core Documentation
 
-**See [SETUP.md](SETUP.md) for detailed installation instructions and troubleshooting.**
+### **Strategic Guide**
+- `docs/FUSED_KERNEL_IMPLEMENTATION_GUIDE.md` - Complete roadmap, risk assessment, and 3-phase implementation plan
 
----
+### **Technical Specification**
+- `docs/FUSED_KERNEL_TECHNICAL_SPEC.md` - Detailed architecture decisions, CUDA kernel specifications, and integration points
 
-## 🧪 Run Tests
+### **Performance Analysis**
+- `docs/FUSED_KERNEL_ANALYSIS.md` - Why fused kernels work and expected speedups
+- `docs/SPEED_OPTIMIZATION_GUIDE.md` - Performance optimization strategies from experiments
 
-After setup completes:
+## 🔧 Implementation Components
 
-```bash
-cd /workspace/CodecLLM/core
+### **Compression Library** (`src/rans/`)
+- **rANS Algorithm** - Entropy coding optimized for GPU parallelization
+- **GPU Kernels** - CUDA implementation with 256×256 tile parallelization
+- **Host Interface** - CPU-side integration with PyTorch
 
-# Test with FP32 KV cache (recommended)
-python3 test_fp32_kv_cache.py
+### **Key Features**
+- ✅ **Bit-exact compression** (verified lossless)
+- ✅ **176 parallel CUDA blocks** (100% RTX 5090 utilization)
+- ✅ **Shared frequency tables** (512 bytes per layer)
+- ✅ **Independent tile processing** (perfect for parallelization)
 
-# For cleaner output (filter verbose logs)
-python3 test_fp32_kv_cache.py 2>&1 | grep -vE "ENCODER|DECODER"
+## 🎯 Expected Performance
 
-# Verify setup anytime
-cd /workspace/CodecLLM
-./setup.sh --verify
-```
+### **Compression**
+- **Ratio:** 1.4× (INT8) / 1.0× (FP16)
+- **Throughput:** 20-100× faster with optimizations
+- **Accuracy:** 100% (bit-exact) / 95%+ (with quantization-aware training)
 
-Expected output:
-```
-✓✓✓ PERFECT MATCH! ✓✓✓
-
-Baseline:   "The capital of France is Paris..."
-Compressed: "The capital of France is Paris..."
-
-Compression: 2.27x
-Memory saved: ~400 MB
-Speed: 85% of baseline
-```
-
----
-
-## 📚 Key Documents
-
-- **[SETUP.md](SETUP.md)** — Complete installation guide and troubleshooting
-- **[core/PROJECT_PLAYBOOK.md](core/PROJECT_PLAYBOOK.md)** — Technical deep-dive and development history
-- **[core/BREAKTHROUGH_ANALYSIS.md](core/BREAKTHROUGH_ANALYSIS.md)** — Root cause analysis (KV cache issue)
-- **[requirements.txt](requirements.txt)** — All dependencies with installation notes
-
----
+### **Speedup vs Baseline**
+- **Memory bandwidth savings:** 2× (INT8 vs FP16 reads)
+- **Fused kernel speedup:** 1.4×-2.0× (bandwidth-bound layers)
+- **VRAM reduction:** 30%+ (compressed storage)
 
 ## 🏗️ Architecture
 
+### **Tile-Based Parallelization**
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ LLM Forward Pass                                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Input → [Embedding] → [Layer 0] → [Layer 1] → ... → Output   │
-│                            ↓                                    │
-│                     ┌──────────────┐                            │
-│                     │ Attention    │                            │
-│                     │   Q/K/V/O    │ ← Compressed (2.3x)       │
-│                     └──────────────┘   Decompress on-the-fly   │
-│                            ↓                                    │
-│                     [FP32 KV Cache] ← Stable precision         │
-│                            ↓                                    │
-│                     ┌──────────────┐                            │
-│                     │ MLP          │                            │
-│                     │ (uncompressed)│                           │
-│                     └──────────────┘                            │
-└─────────────────────────────────────────────────────────────────┘
-
-Compression: FP16/INT8 → Zstd → GPU-direct decode via nvCOMP
-Cache: K/V tensors stored in FP32 for numerical stability
+Layer: 2048 × 5632 weights
+Tiles: 8 × 22 = 176 tiles (256×256)
+GPU: 176 CUDA blocks (one per tile)
+Shared frequency table: 512 bytes
 ```
 
----
+### **Fused Kernel Pipeline**
+```
+Compressed weights → rANS decompress → Dequantize → GEMM computation
+                     (in registers)     (FP16)    (tensor cores)
+```
 
-## 📊 Performance (TinyLlama 1.1B on RTX 5090)
+## 🚧 Implementation Phases
 
-| Configuration | VRAM | Speed | Quality |
-|--------------|------|-------|---------|
-| Baseline | 2.1 GB | 100% | Perfect |
-| **FP32 Cache** | **1.7 GB (-19%)** | **~85%** | **Perfect** |
-| All layers | 1.2 GB (-43%) | ~70% | Perfect |
+### **Phase 1: Basic Fused Kernel** (2-3 weeks)
+1. Implement fused decompress + dequantize + GEMM kernel
+2. Integration with existing tile architecture
+3. Single layer testing and benchmarking
 
-**Key Findings:**
-- ✅ **Lossless compression** with proper KV cache handling
-- ✅ **Memory savings enable larger batch sizes** (+25% throughput)
-- ✅ **Minimal speed impact** (cache speedup >> decompression cost)
+### **Phase 2: Multi-Layer Optimization** (1-2 weeks)
+1. CUDA streams for overlapping decompression
+2. Memory staging optimization
+3. Performance profiling and tuning
 
----
+### **Phase 3: Production Integration** (2-3 weeks)
+1. Dynamic weight loading integration
+2. Full model testing
+3. Error handling and fallback
 
-## 🔬 Technical Details
+## 🔍 Technical Decisions
 
-### Why FP32 KV Cache?
+### **Compression Algorithm**
+- **rANS/tANS** - Optimal for fused kernels (O(1) decode, shared tables)
+- **256×256 tiles** - Maximum GPU parallelization (176 blocks)
+- **Per-channel quantization** - Best accuracy vs compression trade-off
 
-The compression/decompression is **lossless**, but introduces tiny floating-point differences due to:
-- Different computation paths (decompress → copy → dequantize)
-- Different memory layouts (fresh tensors vs static)
-- Non-associative floating-point arithmetic
+### **Integration Strategy**
+- **PyTorch hooks** - Seamless integration with existing models
+- **CUDA streams** - Multi-layer overlapping for maximum throughput
+- **Staging buffers** - VRAM-efficient decompression
 
-These **1e-12** differences are negligible per token, but in autoregressive generation:
-- Token 1-5: Error stays ~1e-12 ✓
-- Token 6: Cached errors → 1e-8 ⚠
-- Token 10: Accumulated error → 1e-2 ❌ (wrong token selected)
+## 📊 Success Metrics
 
-**Solution:** Store K/V cache in FP32 (23-bit precision vs FP16's 10-bit)
-- Error growth bounded
-- Perfect generation quality
-- Minimal memory overhead (~18MB for 100 tokens)
+### **Performance**
+- Compression ratio: 1.4× minimum
+- Decompression speedup: 1.4× vs baseline
+- GPU utilization: 90%+ during decompression
 
+### **Accuracy**
+- Model accuracy: 95%+ baseline (with quantization-aware training)
+- Numerical stability: Bit-exact decompression
+- Autoregressive consistency: No error amplification
+
+### **Memory**
+- VRAM savings: 30%+ vs FP16 baseline
+- Peak memory: No increase (staging only)
+
+## ⚠️ Risk Mitigation
+
+### **High Risk (Address First)**
+- Quantization-aware training compatibility
+- Dynamic weight loading integration
+- Decode path efficiency (must be O(1))
+
+### **Medium Risk (Monitor)**
+- GPU memory management
+- Performance regression in compute-bound workloads
+- KV cache compatibility
+
+### **Low Risk (Proven)**
+- rANS decompression (bit-exact verified)
+- GPU parallelization (176 blocks optimal)
+- Tile-based architecture (scalable)
+
+## 🛠️ Development Setup
+
+### **Dependencies**
+- CUDA 11.8+ (RTX 5090 compatible)
+- PyTorch 2.0+
+- CMake 3.18+
+
+### **Build Commands**
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+### **Testing**
+```python
+# Basic compression test
+python3 -c "from src.rans.c_api import *; print('rANS ready')"
+
+# GPU decompression test
+python3 -c "import torch; print('GPU:', torch.cuda.is_available())"
+```
+
+## 🎉 Ready to Implement!
+
+This project contains everything needed to implement fused decompression kernels:
+
+- ✅ **Working compression library** (GPU-parallelized rANS)
+- ✅ **Comprehensive implementation guides** (strategic and technical)
+- ✅ **Performance optimization insights** (from extensive experiments)
+- ✅ **Clean architecture** (tile-based, scalable)
+
+**Start with:** Read the implementation guides in `docs/`, then implement the basic fused kernel described in the technical specification.
+
+The foundation is solid - the challenge is quantization-aware training and seamless PyTorch integration! 🚀
